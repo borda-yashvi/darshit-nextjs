@@ -15,7 +15,9 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "firebase-admin": "^13.6.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.5.1",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",
