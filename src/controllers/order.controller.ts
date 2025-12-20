@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { OrderService } from "../services/order.service";
 
-export class OrderController {
-    static async create(req: Request & { user?: any }, res: Response) {
+export const OrderController = {
+    async create(req: Request & { user?: any }, res: Response) {
         try {
             const userId = req.user.id;
             const { amount, meta } = req.body;
@@ -13,9 +13,9 @@ export class OrderController {
         } catch (err: any) {
             res.status(500).json({ error: err.message });
         }
-    }
+    },
 
-    static async list(req: Request & { user?: any }, res: Response) {
+    async list(req: Request & { user?: any }, res: Response) {
         try {
             const userId = req.user.id;
             const orders = await OrderService.getOrdersByUser(userId);
@@ -23,5 +23,5 @@ export class OrderController {
         } catch (err: any) {
             res.status(500).json({ error: err.message });
         }
-    }
-}
+    },
+};

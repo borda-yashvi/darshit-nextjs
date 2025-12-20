@@ -4,8 +4,8 @@ import { env } from "../config/env";
 import { UserService } from "../services/user.service";
 import bcrypt from "bcryptjs";
 
-export class UserController {
-  static async register(req: Request, res: Response) {
+export const UserController = {
+  async register(req: Request, res: Response) {
     try {
       const { email, password, name = '', mobile = '', age = '' } = req.body;
 
@@ -42,9 +42,9 @@ export class UserController {
     } catch (error: any) {
       res.status(500).json({ error: error });
     }
-  }
+  },
 
-  static async profile(req: Request & { user?: any }, res: Response) {
+  async profile(req: Request & { user?: any }, res: Response) {
     try {
       const user = await UserService.getUser(req.user.id);
       if (!user) return res.status(404).json({ message: "User not found" });
@@ -52,9 +52,9 @@ export class UserController {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  }
+  },
 
-  static async login(req: Request, res: Response) {
+  async login(req: Request, res: Response) {
     try {
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "Missing email or password" });
@@ -89,5 +89,5 @@ export class UserController {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  }
-}
+  },
+};

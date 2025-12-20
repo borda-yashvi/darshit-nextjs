@@ -1,8 +1,8 @@
 import UserModel from "../models/user.model";
 import { User } from "../types/user.type";
 
-export class UserService {
-  static async createUser(user: User) {
+export const UserService = {
+  async createUser(user: User) {
     // calculate expiresAt if payment info present or default free month
     const now = new Date();
     const durationDays = (user.payment && user.payment.durationDays) || 30;
@@ -20,23 +20,23 @@ export class UserService {
 
     const created = await UserModel.create(payload);
     return created.toObject();
-  }
+  },
 
-  static async getUser(id: string) {
+  async getUser(id: string) {
     const found = await UserModel.findById(id).lean();
     return found || null;
-  }
+  },
 
-  static async findByEmail(email: string) {
+  async findByEmail(email: string) {
     const found = await UserModel.findOne({ email }).lean();
     return found || null;
-  }
+  },
 
-  static async setInactive(id: string) {
+  async setInactive(id: string) {
     return UserModel.findByIdAndUpdate(id, { isActive: false }, { new: true }).lean();
-  }
+  },
 
-  static async upsertDevice(userId: string, deviceInfo: any) {
+  async upsertDevice(userId: string, deviceInfo: any) {
     const doc = await UserModel.findById(userId);
     if (!doc) throw new Error("User not found");
 
@@ -107,5 +107,5 @@ export class UserService {
     doc.devices = [...(doc.devices || []), newDevice];
     await doc.save();
     return { deviceId, updated: false };
-  }
-}
+  },
+};
