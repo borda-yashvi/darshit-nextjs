@@ -5,7 +5,7 @@ import orderRoutes from "./routes/order.route";
 const app = express();
 app.use(express.json());
 
-app.get("/", (req, res) => {
+app.get("/api", (req, res) => {
   res.send("Hello from Vercel 🚀");
 });
 
