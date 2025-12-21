@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { UserService } from "../services/user.service";
 import bcrypt from "bcryptjs";
+import { connectDB } from "../config/mongodb";
 
 export const UserController = {
   async register(req: Request, res: Response) {
@@ -18,6 +19,7 @@ export const UserController = {
       if (!email || !password || !name) {
         return res.status(400).json({ message: "Missing required fields" });
       }
+      await connectDB();
 
       // hash password
       const salt = await bcrypt.genSalt(10);
@@ -74,7 +76,7 @@ export const UserController = {
       }
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "Missing email or password" });
-
+      await connectDB();
       const user = await UserService.findByEmail(email);
       if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
