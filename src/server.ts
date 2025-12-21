@@ -1,6 +1,6 @@
 import app from "./app";
 import { env } from "./config/env";
-import connectDB from "./config/mongodb";
+import { connectDB } from "./config/mongodb";
 
 const PORT = process.env.PORT || 5000;
 
