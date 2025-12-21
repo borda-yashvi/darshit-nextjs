@@ -3,10 +3,22 @@ import { Schema, model } from "mongoose";
 const orderSchema = new Schema(
     {
         user: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        amount: { type: Number, required: true },
-        status: { type: String, enum: ["pending", "paid", "cancelled"], default: "pending" },
-        paymentDate: { type: Date },
-        meta: { type: Object }
+        orderNo: { type: String, required: true },
+        date: { type: Date, required: true },
+        machineNo: { type: String },
+        saller: { type: String },
+        designNo: { type: String },
+        pick: { type: String },
+        qty: { type: Number },
+        totalMtrRepit: { type: Number },
+        totalColor: { type: Number },
+        imageUrl: { type: String },
+        imagePublicId: { type: String },
+        // track basic view info
+        views: {
+            count: { type: Number, default: 0 },
+            lastViewedAt: { type: Date }
+        }
     },
     { timestamps: true }
 );

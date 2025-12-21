@@ -5,12 +5,7 @@ import { connectDB } from "./config/mongodb";
 
 const app = express();
 app.use(express.json());
-// Ensure DB connection is established before handling requests.
-// For local dev, `server.ts` already awaits connectDB(); for serverless
-// (Vercel) we add a lightweight middleware that awaits the cached
-// `connectDB()` promise once per process. This avoids performing
-// expensive reconnects on every request while ensuring mongoose is
-// connected before any DB operation (bufferCommands=false).
+
 let dbConnecting = false;
 app.use(async (req, _res, next) => {
   try {
