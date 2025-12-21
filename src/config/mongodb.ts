@@ -1,18 +1,24 @@
 import mongoose from "mongoose";
 import { env } from "./env";
 
-const connectDB = async () => {
-    try {
-        const uri = env.mongoUri;
-        await mongoose.connect(uri, {
-            // useUnifiedTopology and useNewUrlParser are default in mongoose v7+
-        } as mongoose.ConnectOptions);
-        console.log("✅ MongoDB connected");
-    } catch (error) {
-        console.error("❌ MongoDB connection error:", error);
-        throw error;
-    }
-};
+const uri = env.mongoUri;
 
-export default connectDB;
-export { mongoose };
+let cached = (global as any).mongoose;
+
+if (!cached) {
+    cached = (global as any).mongoose = { conn: null, promise: null };
+}
+
+export async function connectDB() {
+    if (cached.conn) return cached.conn;
+
+    if (!cached.promise) {
+        cached.promise = mongoose.connect(uri, {
+            bufferCommands: false,
+            serverSelectionTimeoutMS: 10000,
+        });
+    }
+
+    cached.conn = await cached.promise;
+    return cached.conn;
+}
