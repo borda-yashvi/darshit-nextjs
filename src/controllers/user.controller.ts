@@ -7,6 +7,12 @@ import bcrypt from "bcryptjs";
 export const UserController = {
   async register(req: Request, res: Response) {
     try {
+      const uri = env.mongoUri;
+
+      if (!uri) {
+        throw new Error("MONGODB_URI not found");
+      }
+
       const { email, password, name = '', mobile = '', age = '' } = req.body;
 
       if (!email || !password || !name) {
@@ -47,6 +53,11 @@ export const UserController = {
   async profile(req: Request & { user?: any }, res: Response) {
     try {
       const user = await UserService.getUser(req.user.id);
+      const uri = env.mongoUri;
+
+      if (!uri) {
+        throw new Error("MONGODB_URI not found");
+      }
       if (!user) return res.status(404).json({ message: "User not found" });
       res.json({ user });
     } catch (err: any) {
@@ -56,6 +67,11 @@ export const UserController = {
 
   async login(req: Request, res: Response) {
     try {
+      const uri = env.mongoUri;
+
+      if (!uri) {
+        throw new Error("MONGODB_URI not found");
+      }
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ message: "Missing email or password" });
 
