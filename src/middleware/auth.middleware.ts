@@ -5,6 +5,9 @@ import { UserService } from "../services/user.service";
 
 export interface AuthRequest extends Request {
   user?: any;
+  get?(name: string): string | undefined;
+  header?(name: string): string | undefined;
+  ip?: string;
 }
 
 export const authMiddleware = (
@@ -12,7 +15,7 @@ export const authMiddleware = (
   res: Response,
   next: NextFunction
 ) => {
-  const token = req.header("Authorization")?.replace("Bearer ", "");
+  const token = req.get("Authorization")?.replace("Bearer ", "");
 
   if (!token) {
     return res.status(401).json({ message: "Access denied. No token provided." });
@@ -35,18 +38,18 @@ export const authMiddleware = (
       }
 
       // check payment expiry
-      if (user.payment && user.payment.expiresAt) {
-        const expires = new Date(user.payment.expiresAt as any).getTime();
+      if (user.payment && (user.payment as any).expiresAt) {
+        const expires = new Date((user.payment as any).expiresAt as any).getTime();
         const now = Date.now();
         if (expires <= now) {
           // Optionally mark user inactive
-          await UserService.setInactive(user._id);
+          await UserService.setInactive(String(user._id));
           return res.status(402).json({ message: "Payment expired. Please renew to continue." });
         }
       }
 
       // Device enforcement: require device id header and ensure device is registered
-      const deviceId = (req.header("x-device-id") || req.header("device-id"));
+      const deviceId = (req.get("x-device-id") || req.get("device-id"));
       if (!deviceId) {
         return res.status(400).json({ message: "Device id required in 'x-device-id' header." });
       }
@@ -58,7 +61,7 @@ export const authMiddleware = (
 
       // update lastSeen for the device (best-effort)
       try {
-        await UserService.upsertDevice(user._id, { deviceId, userAgent: req.header("user-agent"), ip: req.ip });
+        await UserService.upsertDevice(String(user._id), { deviceId, userAgent: req.get("user-agent"), ip: (req as any).ip });
       } catch (err) {
         // ignore update errors
       }

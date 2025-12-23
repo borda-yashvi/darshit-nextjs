@@ -1,5 +1,6 @@
 import OrderModel from "../models/order.model";
 import OrderTableModel from "../models/orderTable.model";
+import mongoose from "mongoose";
 
 export const OrderService = {
     async createOrder(payload: any) {
@@ -7,31 +8,64 @@ export const OrderService = {
         return created.toObject();
     },
 
-    async getOrdersByUser(userId: string) {
-        return OrderModel.find({ user: userId }).lean();
+    async getOrdersByUser(userId: string, search?: string, page?: number, limit?: number) {
+        const baseQuery: any = { user: userId };
+        if (search && typeof search === "string" && search.trim().length) {
+            const re = new RegExp(search.trim(), "i");
+            baseQuery.$or = [
+                { orderNo: re },
+                { designNo: re },
+                { saller: re }
+            ];
+        }
+        const total = await OrderModel.countDocuments(baseQuery);
+        let q = OrderModel.find(baseQuery).sort({ createdAt: -1 });
+        if (page !== undefined && limit !== undefined && Number(limit) > 0) {
+            const p = Number(page) || 1;
+            const l = Number(limit) || 10;
+            q = q.skip((p - 1) * l).limit(l);
+        }
+        const orders = await q.lean();
+        return { orders, total };
     },
 
     async getOrderWithRows(orderId: string) {
         const order = await OrderModel.findById(orderId).lean();
         if (!order) return null;
-        const rows = await OrderTableModel.find({ order: orderId }).lean();
+        const rows = await OrderTableModel.find({ order: orderId }).sort({ orderIndex: 1, createdAt: 1 }).lean();
         return { order, rows };
     },
 
-    async getOrderDetail(orderId: string) {
+    async getOrderDetail(orderId: string, page?: number, limit?: number) {
         const order = await OrderModel.findById(orderId).lean();
         if (!order) return null;
-        const rows = await OrderTableModel.find({ order: orderId }).lean();
 
-        // compute aggregates from rows
-        const aggregates = rows.reduce(
-            (acc: any, r: any) => {
-                acc.totalRepit = acc.totalRepit + (Number(r.repit) || 0);
-                acc.total = acc.total + (Number(r.total) || 0);
-                return acc;
-            },
-            { totalRepit: 0, total: 0 }
-        );
+        const match = { order: new mongoose.Types.ObjectId(orderId) } as any;
+
+        // compute aggregates and total count using aggregation
+        const agg = await OrderTableModel.aggregate([
+            { $match: match },
+            {
+                $group: {
+                    _id: null,
+                    totalRepit: { $sum: { $ifNull: ["$repit", 0] } },
+                    total: { $sum: { $ifNull: ["$total", 0] } },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const aggregates = agg && agg[0] ? { totalRepit: agg[0].totalRepit, total: agg[0].total } : { totalRepit: 0, total: 0 };
+        const total = agg && agg[0] ? agg[0].count : 0;
+
+        // fetch paginated rows
+        let q = OrderTableModel.find({ order: orderId }).sort({ orderIndex: 1, createdAt: 1 });
+        if (page !== undefined && limit !== undefined && Number(limit) > 0) {
+            const p = Number(page) || 1;
+            const l = Number(limit) || 10;
+            q = q.skip((p - 1) * l).limit(l);
+        }
+        const rows = await q.lean();
 
         // build a compact order view with requested fields
         const orderView = {
@@ -54,7 +88,8 @@ export const OrderService = {
         return {
             order: orderView,
             rows,
-            aggregates
+            aggregates,
+            total
         };
     },
 

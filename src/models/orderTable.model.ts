@@ -3,6 +3,7 @@ import { Schema, model } from "mongoose";
 const orderTableSchema = new Schema(
     {
         order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
+        orderIndex: { type: Number, default: 0 },
         f1: { type: String },
         f2: { type: String },
         f3: { type: String },

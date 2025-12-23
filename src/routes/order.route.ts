@@ -12,9 +12,11 @@ router.get("/", authMiddleware, OrderController.list);
 
 router.get("/:id", authMiddleware, OrderController.get);
 router.put("/:id", authMiddleware, upload.single("image"), OrderController.update);
+router.put("/:id/with-rows", authMiddleware, upload.single("image"), OrderController.updateWithRows);
 
 // order-table routes
 router.post("/:id/rows", authMiddleware, OrderController.addRow);
+router.put("/:id/rows", authMiddleware, OrderController.reorderRows);
 router.put("/rows/:rowId", authMiddleware, OrderController.updateRow);
 router.delete("/rows/:rowId", authMiddleware, OrderController.deleteRow);
 router.delete("/:id", authMiddleware, OrderController.delete);

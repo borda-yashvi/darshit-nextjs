@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { OrderService } from "../services/order.service";
-import { OrderTableService, deleteRowsByOrder } from "../services/orderTable.service";
+import { OrderTableService, deleteRowsByOrder, reorderRowsByIds, bulkUpdateRows } from "../services/orderTable.service";
 import { uploadImage, deleteImage } from "../config/cloudinary";
-import { generateSareePdf } from "../pdf/sareePDF";
+import { generateSareePdf } from "../pdf/sareePdf";
 
 export const OrderController = {
     async create(req: Request & { user?: any }, res: Response) {
@@ -21,7 +21,7 @@ export const OrderController = {
                 qty,
                 totalMtrRepit,
                 totalColor
-            } = req.body;
+            } = anyReq.body;
 
             if (!orderNo || !date) return res.status(400).json({ message: "orderNo and date required" });
 
@@ -48,6 +48,37 @@ export const OrderController = {
                 imagePublicId
             });
 
+            // if client provided rows in the request, create them and attach to order
+            let createdRows: any[] | undefined;
+            try {
+                let rowsRaw: any = (anyReq.body && anyReq.body.rows) || (req.body && (req.body as any).rows);
+                if (rowsRaw && typeof rowsRaw === "string") {
+                    try {
+                        rowsRaw = JSON.parse(rowsRaw);
+                    } catch (e) {
+                        rowsRaw = undefined;
+                    }
+                }
+
+                if (Array.isArray(rowsRaw) && rowsRaw.length) {
+                    const payloads = rowsRaw.map((r: any, idx: number) => ({
+                        order: order._id,
+                        orderIndex: r.orderIndex ?? idx,
+                        ...r
+                    }));
+                    // normalize numeric fields
+                    payloads.forEach((p: any) => {
+                        if (p.repit !== undefined) p.repit = Number(p.repit);
+                        if (p.total !== undefined) p.total = Number(p.total);
+                    });
+                    createdRows = await OrderTableService.createRows(payloads);
+                }
+            } catch (e) {
+                // don't fail the whole order create if rows creation fails; log and continue
+                console.error("Failed to create order rows:", e);
+            }
+
+            if (createdRows) return res.json({ order, rows: createdRows });
             res.json({ order });
         } catch (err: any) {
             res.status(500).json({ error: err.message });
@@ -57,8 +88,12 @@ export const OrderController = {
     async list(req: Request & { user?: any }, res: Response) {
         try {
             const userId = req.user.id;
-            const orders = await OrderService.getOrdersByUser(userId);
-            res.json({ orders });
+            const anyReq: any = req;
+            const search = anyReq.query && anyReq.query.search ? String(anyReq.query.search) : undefined;
+            const page = anyReq.query && anyReq.query.page ? Number(anyReq.query.page) : undefined;
+            const limit = anyReq.query && anyReq.query.limit ? Number(anyReq.query.limit) : undefined;
+            const { orders, total } = await OrderService.getOrdersByUser(userId, search, page, limit);
+            res.json({ orders, total, page: page || 1, limit: limit || orders.length });
         } catch (err: any) {
             res.status(500).json({ error: err.message });
         }
@@ -67,7 +102,10 @@ export const OrderController = {
     async get(req: Request & { user?: any }, res: Response) {
         try {
             const orderId = req.params.id;
-            const data = await OrderService.getOrderDetail(orderId);
+            const anyReq: any = req;
+            const page = anyReq.query && anyReq.query.page ? Number(anyReq.query.page) : undefined;
+            const limit = anyReq.query && anyReq.query.limit ? Number(anyReq.query.limit) : undefined;
+            const data = await OrderService.getOrderDetail(orderId, page, limit);
             if (!data) return res.status(404).json({ message: "Order not found" });
             // increment view count
             try {
@@ -87,8 +125,8 @@ export const OrderController = {
     async update(req: Request & { user?: any }, res: Response) {
         try {
             const orderId = req.params.id;
-            const payload: any = { ...req.body };
             const anyReq: any = req;
+            const payload: any = { ...anyReq.body };
             const file = anyReq.file;
             if (file && file.buffer) {
                 const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
@@ -108,13 +146,113 @@ export const OrderController = {
         }
     },
 
+    // update order and optionally create/update rows in a single request
+    async updateWithRows(req: Request & { user?: any }, res: Response) {
+        try {
+            const orderId = req.params.id;
+            const anyReq: any = req;
+            const file = anyReq.file;
+            const payload: any = { ...anyReq.body };
+
+            if (file && file.buffer) {
+                const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+                const uploaded = await uploadImage(dataUri, { folder: `orders/${req.user.id}` });
+                payload.imageUrl = uploaded.secure_url || uploaded.url;
+                payload.imagePublicId = uploaded.public_id;
+            }
+
+            // extract rows from payload if present
+            let rowsRaw: any = payload.rows;
+            delete payload.rows;
+
+            // convert numeric fields if present
+            if (payload.qty) payload.qty = Number(payload.qty);
+            if (payload.totalMtrRepit) payload.totalMtrRepit = Number(payload.totalMtrRepit);
+            if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
+
+            const updatedOrder = await OrderService.updateOrder(orderId, payload);
+            if (!updatedOrder) return res.status(404).json({ message: "Order not found" });
+
+            let createdRows: any[] | undefined;
+            let updatedRows: any[] | undefined;
+
+            // if rowsRaw is a string (multipart) try parse
+            if (rowsRaw && typeof rowsRaw === "string") {
+                try {
+                    rowsRaw = JSON.parse(rowsRaw);
+                } catch (e) {
+                    rowsRaw = undefined;
+                }
+            }
+
+            if (Array.isArray(rowsRaw) && rowsRaw.length) {
+                const toCreate = rowsRaw.filter((r: any) => !r._id).map((r: any, idx: number) => ({
+                    order: orderId,
+                    orderIndex: r.orderIndex ?? idx,
+                    ...r
+                }));
+
+                const toUpdate = rowsRaw.filter((r: any) => r._id).map((r: any) => ({
+                    _id: r._id,
+                    orderIndex: r.orderIndex,
+                    f1: r.f1,
+                    f2: r.f2,
+                    f3: r.f3,
+                    f4: r.f4,
+                    f5: r.f5,
+                    f6: r.f6,
+                    repit: r.repit !== undefined ? Number(r.repit) : r.repit,
+                    total: r.total !== undefined ? Number(r.total) : r.total
+                }));
+
+                if (toCreate.length) {
+                    // normalize numeric fields
+                    toCreate.forEach((p: any) => {
+                        if (p.repit !== undefined) p.repit = Number(p.repit);
+                        if (p.total !== undefined) p.total = Number(p.total);
+                    });
+                    createdRows = await OrderTableService.createRows(toCreate);
+                }
+
+                if (toUpdate.length) {
+                    updatedRows = await bulkUpdateRows(toUpdate);
+                }
+            }
+
+            return res.json({ order: updatedOrder, createdRows, updatedRows });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    },
+
     // order-table row handlers
     async addRow(req: Request & { user?: any }, res: Response) {
         try {
             const orderId = req.params.id;
-            const payload = { order: orderId, ...req.body };
+            const anyReq: any = req;
+            const body: any = anyReq.body;
+            // if client sends an array of rows create many
+            if (Array.isArray(body)) {
+                const payloads = body.map((b: any, idx: number) => ({ order: orderId, orderIndex: b.orderIndex ?? idx, ...b }));
+                const rows = await OrderTableService.createRows(payloads);
+                return res.json({ rows });
+            }
+            const payload = { order: orderId, ...body };
             const row = await OrderTableService.createRow(payload);
             res.json({ row });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    },
+
+    // reorder rows within an order by receiving an array of row ids in desired order
+    async reorderRows(req: Request & { user?: any }, res: Response) {
+        try {
+            const orderId = req.params.id;
+            const ids: string[] = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ message: "Expected an array of row ids" });
+            const result = await reorderRowsByIds(orderId, ids);
+            res.json({ result });
         } catch (err: any) {
             res.status(500).json({ error: err.message });
         }
@@ -166,9 +304,9 @@ export const OrderController = {
     async getSareePdf(req: Request & { user?: any }, res: Response) {
         try {
             const pdfBuffer = await generateSareePdf({
-                orderNo: "1838",
+                orderNo: "18381838183818",
                 date: "09-11-2023",
-                machineNo: "L-",
+                machineNo: "L-L-L-L-L",
                 saler: "DARSHIT",
                 designNo: "VR-51",
                 pick: "38-40",
@@ -176,17 +314,62 @@ export const OrderController = {
                 totalMeter: "40",
                 totalColor: "8",
                 totalSarees: 120,
-                designImage: "https://your-image-url.com/design.jpg",
+                designImage: "https://res.cloudinary.com/dq9ijm6k2/image/upload/v1766328558/orders/6946e19e3e4fe53247a9bd0e/gqrwgpj1k4h5tjkum81c.png",
 
                 rows: [
                     { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
                     { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
                     { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
+
                 ],
             });
 
             res.setHeader("Content-Type", "application/pdf");
             res.setHeader("Content-Disposition", "inline; filename=saree.pdf");
+            res.setHeader("Content-Length", pdfBuffer.length);
+
             res.send(pdfBuffer);
         } catch (err: any) {
             res.status(500).json({ error: err.message });

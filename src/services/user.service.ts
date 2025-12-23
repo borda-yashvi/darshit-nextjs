@@ -43,7 +43,7 @@ export const UserService = {
     const now = new Date();
     const deviceId = deviceInfo.deviceId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const type = (deviceInfo.type || "unknown").toLowerCase();
-    const category = (type === "laptop" || type === "pc") ? "laptop" : (type === "tablet" || type === "mobile" ? "mobile" : "other");
+    const category = ((type === "laptop" || type === "pc") ? "laptop" : (type === "tablet" || type === "mobile" ? "mobile" : "other")) as "mobile" | "laptop" | "other";
 
     // check if device exists
     const existingIndex = (doc.devices || []).findIndex((d: any) => d.deviceId === deviceId);
@@ -104,7 +104,7 @@ export const UserService = {
       createdAt: now,
     };
 
-    doc.devices = [...(doc.devices || []), newDevice];
+    doc.devices = [...(doc.devices || []), newDevice as any];
     await doc.save();
     return { deviceId, updated: false };
   },
