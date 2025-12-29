@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { UserService } from "../services/user.service";
 import bcrypt from "bcryptjs";
+import { successResponse, errorResponse } from "../utils/response.util";
 
 
 export const UserController = {
@@ -14,10 +15,10 @@ export const UserController = {
         throw new Error("MONGODB_URI not found");
       }
 
-      const { email, password, name = '', mobile = '', age = '' } = req.body;
+      const { email, password, name = '', mobile = '' } = req.body;
 
       if (!email || !password || !name) {
-        return res.status(400).json({ message: "Missing required fields" });
+        return errorResponse(res, 400, "Missing required fields");
       }
       // hash password
       const salt = await bcrypt.genSalt(10);
@@ -29,7 +30,6 @@ export const UserController = {
         password: hashed,
         name,
         mobile,
-        age,
       });
 
       // Create JWT token
@@ -39,14 +39,13 @@ export const UserController = {
         { expiresIn: "7d" }
       );
 
-      res.json({
-        message: "User created successfully",
+      return successResponse(res, {
         user: userProfile,
         token,
       });
 
     } catch (error: any) {
-      res.status(500).json({ error: error });
+      return errorResponse(res, 500, "Internal Server Error", { error: error.message });
     }
   },
 
@@ -58,10 +57,10 @@ export const UserController = {
       if (!uri) {
         throw new Error("MONGODB_URI not found");
       }
-      if (!user) return res.status(404).json({ message: "User not found" });
-      res.json({ user });
+      if (!user) return errorResponse(res, 404, "User not found");
+      return successResponse(res, { user });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      return errorResponse(res, 500, "Internal Server Error", { error: err.message });
     }
   },
 
@@ -73,12 +72,12 @@ export const UserController = {
         throw new Error("MONGODB_URI not found");
       }
       const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ message: "Missing email or password" });
+      if (!email || !password) return errorResponse(res, 400, "Missing email or password");
       const user = await UserService.findByEmail(email);
-      if (!user) return res.status(401).json({ message: "Invalid credentials" });
+      if (!user) return errorResponse(res, 401, "Invalid credentials");
 
       const match = await bcrypt.compare(password, (user as any).password || "");
-      if (!match) return res.status(401).json({ message: "Invalid credentials" });
+      if (!match) return errorResponse(res, 401, "Invalid credentials");
 
       const token = jwt.sign({ id: (user as any)._id, email: user.email }, env.jwtSecret, { expiresIn: "7d" });
 
@@ -100,9 +99,9 @@ export const UserController = {
         console.error("Device upsert failed:", err);
       }
 
-      res.json({ token, user, deviceId: deviceResult.deviceId || deviceInfo.deviceId });
+      return successResponse(res, { user: { ...user, token, deviceId: deviceResult.deviceId || deviceInfo.deviceId } });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      return errorResponse(res, 500, "Internal Server Error", { error: err.message });
     }
   },
 };

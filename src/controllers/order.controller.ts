@@ -3,6 +3,7 @@ import { OrderService } from "../services/order.service";
 import { OrderTableService, deleteRowsByOrder, reorderRowsByIds, bulkUpdateRows } from "../services/orderTable.service";
 import { uploadImage, deleteImage } from "../config/cloudinary";
 import { generateSareePdf } from "../pdf/sareePdf";
+import { successResponse, errorResponse } from "../utils/response.util";
 
 export const OrderController = {
     async create(req: Request & { user?: any }, res: Response) {
@@ -23,7 +24,7 @@ export const OrderController = {
                 totalColor
             } = anyReq.body;
 
-            if (!orderNo || !date) return res.status(400).json({ message: "orderNo and date required" });
+            if (!orderNo || !date) return errorResponse(res, 400, "orderNo and date required");
 
             let imageUrl: string | undefined;
             if (file && file.buffer) {
@@ -78,10 +79,10 @@ export const OrderController = {
                 console.error("Failed to create order rows:", e);
             }
 
-            if (createdRows) return res.json({ order, rows: createdRows });
-            res.json({ order });
+            if (createdRows) return successResponse(res, { order, rows: createdRows });
+            return successResponse(res, { order });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -93,9 +94,9 @@ export const OrderController = {
             const page = anyReq.query && anyReq.query.page ? Number(anyReq.query.page) : undefined;
             const limit = anyReq.query && anyReq.query.limit ? Number(anyReq.query.limit) : undefined;
             const { orders, total } = await OrderService.getOrdersByUser(userId, search, page, limit);
-            res.json({ orders, total, page: page || 1, limit: limit || orders.length });
+            return successResponse(res, { orders, total, page: page || 1, limit: limit || orders.length });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -106,7 +107,7 @@ export const OrderController = {
             const page = anyReq.query && anyReq.query.page ? Number(anyReq.query.page) : undefined;
             const limit = anyReq.query && anyReq.query.limit ? Number(anyReq.query.limit) : undefined;
             const data = await OrderService.getOrderDetail(orderId, page, limit);
-            if (!data) return res.status(404).json({ message: "Order not found" });
+            if (!data) return errorResponse(res, 404, "Order not found");
             // increment view count
             try {
                 await OrderService.updateOrder(orderId, {
@@ -116,9 +117,9 @@ export const OrderController = {
             } catch (e) {
                 // ignore view increment failures
             }
-            res.json(data);
+            return successResponse(res, data);
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -139,10 +140,10 @@ export const OrderController = {
             if (payload.totalMtrRepit) payload.totalMtrRepit = Number(payload.totalMtrRepit);
             if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
             const updated = await OrderService.updateOrder(orderId, payload);
-            if (!updated) return res.status(404).json({ message: "Order not found" });
-            res.json({ order: updated });
+            if (!updated) return errorResponse(res, 404, "Order not found");
+            return successResponse(res, { order: updated });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -171,7 +172,7 @@ export const OrderController = {
             if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
 
             const updatedOrder = await OrderService.updateOrder(orderId, payload);
-            if (!updatedOrder) return res.status(404).json({ message: "Order not found" });
+            if (!updatedOrder) return errorResponse(res, 404, "Order not found");
 
             let createdRows: any[] | undefined;
             let updatedRows: any[] | undefined;
@@ -219,9 +220,9 @@ export const OrderController = {
                 }
             }
 
-            return res.json({ order: updatedOrder, createdRows, updatedRows });
+            return successResponse(res, { order: updatedOrder, createdRows, updatedRows });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -235,13 +236,13 @@ export const OrderController = {
             if (Array.isArray(body)) {
                 const payloads = body.map((b: any, idx: number) => ({ order: orderId, orderIndex: b.orderIndex ?? idx, ...b }));
                 const rows = await OrderTableService.createRows(payloads);
-                return res.json({ rows });
+                return successResponse(res, { rows });
             }
             const payload = { order: orderId, ...body };
             const row = await OrderTableService.createRow(payload);
-            res.json({ row });
+            return successResponse(res, { row });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -250,11 +251,11 @@ export const OrderController = {
         try {
             const orderId = req.params.id;
             const ids: string[] = req.body;
-            if (!Array.isArray(ids)) return res.status(400).json({ message: "Expected an array of row ids" });
+            if (!Array.isArray(ids)) return errorResponse(res, 400, "Expected an array of row ids");
             const result = await reorderRowsByIds(orderId, ids);
-            res.json({ result });
+            return successResponse(res, { result });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -262,10 +263,10 @@ export const OrderController = {
         try {
             const rowId = req.params.rowId;
             const updated = await OrderTableService.updateRow(rowId, req.body);
-            if (!updated) return res.status(404).json({ message: "Row not found" });
-            res.json({ row: updated });
+            if (!updated) return errorResponse(res, 404, "Row not found");
+            return successResponse(res, { row: updated });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -273,10 +274,10 @@ export const OrderController = {
         try {
             const rowId = req.params.rowId;
             const deleted = await OrderTableService.deleteRow(rowId);
-            if (!deleted) return res.status(404).json({ message: "Row not found" });
-            res.json({ deleted });
+            if (!deleted) return errorResponse(res, 404, "Row not found");
+            return successResponse(res, { deleted });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -286,7 +287,7 @@ export const OrderController = {
             // remove all order-table rows first
             await deleteRowsByOrder(orderId);
             const deleted = await OrderService.deleteOrder(orderId);
-            if (!deleted) return res.status(404).json({ message: "Order not found" });
+            if (!deleted) return errorResponse(res, 404, "Order not found");
             // delete uploaded image from Cloudinary if present
             try {
                 if ((deleted as any).imagePublicId) {
@@ -295,9 +296,9 @@ export const OrderController = {
             } catch (e) {
                 console.error("Failed to delete image from Cloudinary:", e);
             }
-            res.json({ deleted });
+            return successResponse(res, { deleted });
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     },
 
@@ -372,7 +373,7 @@ export const OrderController = {
 
             res.send(pdfBuffer);
         } catch (err: any) {
-            res.status(500).json({ error: err.message });
+            return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
     }
 };
