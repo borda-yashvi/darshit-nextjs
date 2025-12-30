@@ -399,7 +399,10 @@ export const UserController = {
       }
 
       // Handle other fields
-      if (dob) updateData.dob = new Date(dob);
+      if (dob) {
+        const [day, month, year] = dob.split("/");
+        updateData.dob = new Date(`${year}-${month}-${day}`);
+      }
       if (fullName) updateData.fullName = fullName;
       if (email) updateData.email = email;
 
