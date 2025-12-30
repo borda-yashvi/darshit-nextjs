@@ -8,8 +8,14 @@ export const OrderService = {
         return created.toObject();
     },
 
-    async getOrdersByUser(userId: string, search?: string, page?: number, limit?: number) {
+    async getOrdersByUser(userId: string, search?: string, page?: number, limit?: number, partyId?: string) {
         const baseQuery: any = { user: userId };
+
+        // Filter by party if provided
+        if (partyId) {
+            baseQuery.party = partyId;
+        }
+
         if (search && typeof search === "string" && search.trim().length) {
             const re = new RegExp(search.trim(), "i");
             baseQuery.$or = [
@@ -19,7 +25,7 @@ export const OrderService = {
             ];
         }
         const total = await OrderModel.countDocuments(baseQuery);
-        let q = OrderModel.find(baseQuery).sort({ createdAt: -1 });
+        let q = OrderModel.find(baseQuery).sort({ createdAt: -1 }).populate("party", "_id partyName mobile");
         if (page !== undefined && limit !== undefined && Number(limit) > 0) {
             const p = Number(page) || 1;
             const l = Number(limit) || 10;
@@ -37,7 +43,7 @@ export const OrderService = {
     },
 
     async getOrderDetail(orderId: string, page?: number, limit?: number) {
-        const order = await OrderModel.findById(orderId).lean();
+        const order = await OrderModel.findById(orderId).populate("party", "_id partyName mobile").lean();
         if (!order) return null;
 
         const match = { order: new mongoose.Types.ObjectId(orderId) } as any;

@@ -4,6 +4,7 @@ import { OrderTableService, deleteRowsByOrder, reorderRowsByIds, bulkUpdateRows 
 import { uploadImage, deleteImage } from "../config/cloudinary";
 import { generateSareePdf } from "../pdf/sareePdf";
 import { successResponse, errorResponse } from "../utils/response.util";
+import OrderModel from "../models/order.model";
 
 export const OrderController = {
     async create(req: Request & { user?: any }, res: Response) {
@@ -21,7 +22,8 @@ export const OrderController = {
                 pick,
                 qty,
                 totalMtrRepit,
-                totalColor
+                totalColor,
+                party
             } = anyReq.body;
 
             if (!orderNo || !date) return errorResponse(res, 400, "orderNo and date required");
@@ -46,7 +48,8 @@ export const OrderController = {
                 totalMtrRepit: totalMtrRepit ? Number(totalMtrRepit) : undefined,
                 totalColor: totalColor ? Number(totalColor) : undefined,
                 imageUrl,
-                imagePublicId
+                imagePublicId,
+                party: party || undefined
             });
 
             // if client provided rows in the request, create them and attach to order
@@ -93,7 +96,9 @@ export const OrderController = {
             const search = anyReq.query && anyReq.query.search ? String(anyReq.query.search) : undefined;
             const page = anyReq.query && anyReq.query.page ? Number(anyReq.query.page) : undefined;
             const limit = anyReq.query && anyReq.query.limit ? Number(anyReq.query.limit) : undefined;
-            const { orders, total } = await OrderService.getOrdersByUser(userId, search, page, limit);
+            const partyId = anyReq.query && anyReq.query.partyId ? String(anyReq.query.partyId) : undefined;
+
+            const { orders, total } = await OrderService.getOrdersByUser(userId, search, page, limit, partyId);
             return successResponse(res, { orders, total, page: page || 1, limit: limit || orders.length });
         } catch (err: any) {
             return errorResponse(res, 500, "Internal Server Error", { error: err.message });
@@ -304,71 +309,64 @@ export const OrderController = {
 
     async getSareePdf(req: Request & { user?: any }, res: Response) {
         try {
+            const orderId = req.params.orderId;
+
+            // Fetch order with rows
+            const orderData = await OrderService.getOrderWithRows(orderId);
+            if (!orderData) {
+                return errorResponse(res, 404, "Order not found");
+            }
+
+            const { order, rows } = orderData;
+
+            // Populate party information if exists
+            let partyName = "Party"; // Default
+            if (order.party) {
+                const populatedOrder: any = await OrderModel.findById(orderId).populate("party", "partyName").lean();
+                if (populatedOrder && populatedOrder.party) {
+                    partyName = populatedOrder.party.partyName || partyName;
+                }
+            }
+
+            // Format date
+            const formattedDate = order.date
+                ? new Date(order.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                : '';
+
+            // Calculate total sarees from rows
+            const totalSarees = rows.reduce((sum: number, row: any) => sum + (row.total || 0), 0);
+
+            // Map rows to PDF format
+            const pdfRows = rows.map((row: any) => ({
+                f1: row.f1 || '',
+                f2: row.f2 || '',
+                f3: row.f3 || '',
+                f4: row.f4 || '',
+                f5: row.f5 || '',
+                f6: row.f6 || '',
+                repeat: row.repit || 0,
+                total: row.total || 0
+            }));
+
+            // Generate PDF with dynamic data
             const pdfBuffer = await generateSareePdf({
-                orderNo: "18381838183818",
-                date: "09-11-2023",
-                machineNo: "L-L-L-L-L",
-                saler: "DARSHIT",
-                designNo: "VR-51",
-                pick: "38-40",
-                quality: "KOTA",
-                totalMeter: "40",
-                totalColor: "8",
-                totalSarees: 120,
-                designImage: "https://res.cloudinary.com/dq9ijm6k2/image/upload/v1766328558/orders/6946e19e3e4fe53247a9bd0e/gqrwgpj1k4h5tjkum81c.png",
-
-                rows: [
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "N-GAJARI", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "BLACK", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-                    { f1: "B.GREEN", f2: "210 CHIKU", f3: "D.GREEN", f4: "N-GAJARI", f5: "WINE", repeat: 5, total: 15 },
-
-                ],
+                partyName: partyName,
+                orderNo: order.orderNo || '',
+                date: formattedDate,
+                machineNo: order.machineNo || '',
+                saler: order.saller || '',
+                designNo: order.designNo || '',
+                pick: order.pick || '',
+                quality: '', // Add quality field to order model if needed
+                totalMeter: order.totalMtrRepit ? String(order.totalMtrRepit) : '',
+                totalColor: order.totalColor ? String(order.totalColor) : '',
+                totalSarees: totalSarees,
+                designImage: order.imageUrl || '',
+                rows: pdfRows,
             });
 
             res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", "inline; filename=saree.pdf");
+            res.setHeader("Content-Disposition", `inline; filename=order-${order.orderNo}.pdf`);
             res.setHeader("Content-Length", pdfBuffer.length);
 
             res.send(pdfBuffer);

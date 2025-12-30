@@ -14,6 +14,7 @@ const orderSchema = new Schema(
         totalColor: { type: Number },
         imageUrl: { type: String },
         imagePublicId: { type: String },
+        party: { type: Schema.Types.ObjectId, ref: "Party" },
         // track basic view info
         views: {
             count: { type: Number, default: 0 },

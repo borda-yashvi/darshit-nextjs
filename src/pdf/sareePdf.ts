@@ -339,7 +339,7 @@ export async function generateSareePdf(data) {
     </head>
     <body>
       <div style="border:1px solid black; padding:10px;">
-    <h2 style="text-align:center;">|| BAPA SITARAM INDUSTRIES ||</h2>
+    <h2 style="text-align:center;">|| ${data.partyName || 'Party'} ||</h2>
 
     <table width="100%" border="1" cellspacing="0" cellpadding="5">
       <tr>

@@ -30,7 +30,17 @@ const userSchema = new Schema(
             startDate: { type: Date, default: Date.now },
             durationDays: { type: Number, default: 30 },
             expiresAt: { type: Date }
-        }
+        },
+        resetOtp: { type: String },
+        resetOtpExpiry: { type: Date },
+        // Mobile OTP authentication fields
+        phone: { type: String, index: true },
+        countryCode: { type: String },
+        fullName: { type: String },
+        dob: { type: Date },
+        image: { type: String },
+        loginOtp: { type: String },
+        loginOtpExpiry: { type: Date }
     },
     { timestamps: true }
 );
