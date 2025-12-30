@@ -15,6 +15,7 @@ export const sendOtpSchema = z.object({
     company_device: z.string().optional(),
     company_model: z.string().optional(),
     app_version: z.string().optional(),
+    device_id: z.string(),
 });
 
 // Verify OTP schema

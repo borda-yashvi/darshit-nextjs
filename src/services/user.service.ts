@@ -164,7 +164,6 @@ export const UserService = {
       phone: data.phone,
       countryCode: data.countryCode,
       name: data.fullName, // Set name same as fullName for compatibility
-      email: `${data.phone}@phone.user`, // Temporary email for compatibility
       isActive: true,
       payment: {
         type: "free",

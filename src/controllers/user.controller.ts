@@ -253,7 +253,7 @@ export const UserController = {
         return errorResponse(res, 400, validation.error.issues[0].message);
       }
 
-      const { phone, countryCode, company_brand, company_device, company_model, app_version } = validation.data;
+      const { phone, countryCode, company_brand, company_device, device_id, company_model, app_version } = validation.data;
 
       // Check if user exists
       const user = await UserService.findByPhone(phone, countryCode);
@@ -273,6 +273,7 @@ export const UserController = {
           type: company_device || "mobile",
           platform: company_brand || "",
           name: company_model || "",
+          device_id: device_id || "",
           userAgent: `${company_brand || ""} ${company_model || ""} v${app_version || ""}`.trim(),
         });
       }
@@ -385,7 +386,7 @@ export const UserController = {
       const file = anyReq.file;
 
       // Extract form fields
-      const { dob, fullName,email } = anyReq.body;
+      const { dob, fullName, email } = anyReq.body;
 
       const updateData: any = {};
 
