@@ -322,82 +322,154 @@ export async function generateSareePdf(data) {
 
   // Build HTML dynamically
   const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Saree Order PDF</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1, h2 { text-align: center; }
-            .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
-            .header img { max-height: 100px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #000; padding: 5px; text-align: center; }
-            th { background-color: #f0f0f0; }
-        </style>
-    </head>
-    <body>
-      <div style="border:1px solid black; padding:10px;">
-    <h2 style="text-align:center;">|| ${data.partyName || 'Party'} ||</h2>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Saree Order</title>
 
-    <table width="100%" border="1" cellspacing="0" cellpadding="5">
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+  }
+
+  .page {
+    border: 2px solid #000;
+    padding: 10px;
+  }
+
+  .title {
+    text-align: center;
+    font-weight: bold;
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  td, th {
+    border: 1px solid #000;
+    padding: 4px;
+    text-align: center;
+  }
+
+  .no-border {
+    border: none;
+  }
+
+  .left-img-box {
+  border: 1px solid #000;
+  padding: 0;
+  height: 260px;          /* adjust if needed */
+  width: 100%;
+  overflow: hidden;
+}
+
+.left-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;   /* shows full image */
+}
+
+  .info-table td:first-child {
+    font-weight: bold;
+    text-align: left;
+    width: 15%;
+  }
+
+  .info-table td:last-child {
+    text-align: center;
+    width: 30%;
+  }
+
+  .highlight {
+    background-color: #ffe95c;
+    font-weight: bold;
+  }
+
+  .footer-total {
+    font-weight: bold;
+    text-align: right;
+  }
+</style>
+</head>
+
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="title">|| BAPA SITARAM INDUSTRIES ||</div>
+
+  <!-- TOP SECTION -->
+  <table>
+    <tr>
+      <!-- IMAGE -->
+      <td width="50%">
+        <div class="left-img-box">
+  <img src="${data.designImage}" />
+</div>
+      </td>
+
+      <!-- INFO -->
+      <td width="50%">
+        <table class="info-table">
+          <tr><td>ORDER NO.</td><td>${data.orderNo}</td></tr>
+          <tr><td>DATE</td><td>${data.date}</td></tr>
+          <tr><td>MACHINE NO.</td><td>${data.machineNo}</td></tr>
+          <tr><td>SALER</td><td>${data.saler}</td></tr>
+          <tr><td>DESIGN NO.</td><td>${data.designNo}</td></tr>
+          <tr><td class="highlight">PICK</td><td class="highlight">${data.pick}</td></tr>
+          <tr><td>QUALITY</td><td>${data.quality}</td></tr>
+          <tr><td class="highlight">TOTAL MTR/REPEAT</td><td class="highlight">${data.totalMeter}</td></tr>
+          <tr><td>TOTAL COLOUR</td><td>${data.totalColor}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <br/>
+
+  <!-- COLOR TABLE -->
+  <table>
+    <tr>
+      <th>NO</th>
+      <th>F1</th>
+      <th>F2</th>
+      <th>F3</th>
+      <th>F4</th>
+      <th>F5</th>
+      <th>REPEAT</th>
+      <th>TOTAL</th>
+    </tr>
+
+    ${data.rows.map((r, i) => `
       <tr>
-        <td width="50%">
-          <img src="${data.designImage}" width="250"/>
-        </td>
-        <td width="50%">
-          <table width="100%" border="1" cellspacing="0" cellpadding="5" width="250">
-            <tr><td>ORDER NO</td><td>${data.orderNo}</td></tr>
-            <tr><td>DATE</td><td>${data.date}</td></tr>
-            <tr><td>MACHINE NO</td><td>${data.machineNo}</td></tr>
-            <tr><td>SALER</td><td>${data.saler}</td></tr>
-            <tr><td>DESIGN NO</td><td>${data.designNo}</td></tr>
-            <tr><td>PICK</td><td>${data.pick}</td></tr>
-            <tr><td>QUALITY</td><td>${data.quality}</td></tr>
-            <tr><td>TOTAL MTR/REPEAT</td><td>${data.totalMeter}</td></tr>
-            <tr><td>TOTAL COLOUR</td><td>${data.totalColor}</td></tr>
-          </table>
-        </td>
+        <td>${i + 1}</td>
+        <td>${r.f1}</td>
+        <td>${r.f2}</td>
+        <td>${r.f3}</td>
+        <td>${r.f4}</td>
+        <td>${r.f5}</td>
+        <td>${r.repeat}</td>
+        <td>${r.total}</td>
       </tr>
-    </table>
+    `).join("")}
 
-    <br/>
+    <tr>
+      <td colspan="7" class="footer-total">TOTAL SAREES</td>
+      <td><b>${data.totalSarees}</b></td>
+    </tr>
+  </table>
 
-    <table width="100%" border="1" cellspacing="0" cellpadding="5">
-      <tr>
-        <th>NO</th>
-        <th>F1</th>
-        <th>F2</th>
-        <th>F3</th>
-        <th>F4</th>
-        <th>F5</th>
-        <th>REPEAT</th>
-        <th>TOTAL</th>
-      </tr>
+</div>
+</body>
+</html>
+`;
 
-      ${data.rows.map((r, i) => `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${r.f1}</td>
-          <td>${r.f2}</td>
-          <td>${r.f3}</td>
-          <td>${r.f4}</td>
-          <td>${r.f5}</td>
-          <td>${r.repeat}</td>
-          <td>${r.total}</td>
-        </tr>
-      `).join("")}
-
-      <tr>
-        <td colspan="7" align="right"><b>TOTAL SAREES</b></td>
-        <td><b>${data.totalSarees}</b></td>
-      </tr>
-    </table>
-  </div>
-    </body>
-    </html>
-    `;
 
   // Set HTML content
   await page.setContent(html, { waitUntil: "networkidle0" });
