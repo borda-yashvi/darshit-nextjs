@@ -302,7 +302,7 @@ export const UserController = {
         return errorResponse(res, 400, validation.error.issues[0].message);
       }
 
-      const { phone, countryCode, otp } = validation.data;
+      const { phone, countryCode, otp, device_id } = validation.data;
 
       // Verify OTP
       // const isValidOtp = await UserService.verifyLoginOtp(phone, countryCode, otp);
@@ -317,7 +317,7 @@ export const UserController = {
       }
 
       // Generate JWT token
-      const token = jwt.sign({ id: (user as any)._id }, process.env.JWT_SECRET || "default_secret", {
+      const token = jwt.sign({ id: (user as any)._id, deviceId: device_id }, process.env.JWT_SECRET || "default_secret", {
         expiresIn: "30d",
       });
 

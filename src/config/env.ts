@@ -9,6 +9,10 @@ export const env = {
   emailUser: process.env.EMAIL_USER || "",
   emailPass: process.env.EMAIL_PASS || "",
   emailFrom: process.env.EMAIL_FROM || "noreply@example.com",
+  // Google & Apple OAuth
+  googleClientId: process.env.GOOGLE_CLIENT_ID || "35898743534-kljm9agmv796vo5k7460kgdd8m4hhboh.apps.googleusercontent.com",
+  appleClientId: process.env.APPLE_CLIENT_ID || "",
+  appleAudience: process.env.APPLE_AUDIENCE || "",
   // SMS Configuration
   smsService: process.env.SMS_SERVICE || "console", // console, twilio, aws
   smsApiKey: process.env.SMS_API_KEY || "",

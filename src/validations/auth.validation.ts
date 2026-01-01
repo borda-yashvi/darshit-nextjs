@@ -23,6 +23,11 @@ export const verifyOtpSchema = z.object({
     phone: z.string().min(10, "Phone number must be at least 10 digits"),
     countryCode: z.string().regex(/^\+\d{1,4}$/, "Invalid country code format (e.g., +91)"),
     otp: z.string().length(6, "OTP must be exactly 6 digits"),
+    company_brand: z.string().optional(),
+    company_device: z.string().optional(),
+    company_model: z.string().optional(),
+    app_version: z.string().optional(),
+    device_id: z.string(),
 });
 
 // Resend OTP schema

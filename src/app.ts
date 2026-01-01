@@ -2,6 +2,7 @@ import express from "express";
 import userRoutes from "./routes/user.route";
 import orderRoutes from "./routes/order.route";
 import partyRoutes from "./routes/party.route";
+import authRoutes from "./routes/auth.route";
 import { connectDB } from "./config/mongodb";
 
 const app = express();
@@ -27,6 +28,7 @@ app.get("/api", (req, res) => {
 });
 
 app.use("/api/users", userRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/parties", partyRoutes);
 

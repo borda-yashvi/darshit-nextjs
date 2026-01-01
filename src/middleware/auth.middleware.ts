@@ -50,21 +50,23 @@ export const authMiddleware = (
       }
 
       // Device enforcement: require device id header and ensure device is registered
-      const deviceId = (req.get("x-device-id") || req.get("device-id"));
-      if (!deviceId) {
-        return errorResponse(res, 400, "Device id required in 'x-device-id' header.");
-      }
+      const deviceId = (req.get("x-device-id") || req.get("device-id")) || decoded.deviceId;
+      // if (!deviceId) {
+      //   return errorResponse(res, 400, "Device id required in 'x-device-id' header.");
+      // }
 
-      const foundDevice = (user.devices || []).find((d: any) => d.deviceId === deviceId);
-      if (!foundDevice) {
-        return errorResponse(res, 401, "Device not registered for this user.");
-      }
+      if (deviceId) {
+        const foundDevice = (user.devices || []).find((d: any) => d.deviceId === deviceId);
+        if (!foundDevice) {
+          return errorResponse(res, 401, "Device not registered for this user.");
+        }
 
-      // update lastSeen for the device (best-effort)
-      try {
-        await UserService.upsertDevice(String(user._id), { deviceId, userAgent: req.get("user-agent"), ip: (req as any).ip });
-      } catch (err) {
-        // ignore update errors
+        // update lastSeen for the device (best-effort)
+        try {
+          await UserService.upsertDevice(String(user._id), { deviceId, userAgent: req.get("user-agent"), ip: (req as any).ip });
+        } catch (err) {
+          // ignore update errors
+        }
       }
 
       req.user = { id: decoded.id, email: decoded.email };

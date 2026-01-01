@@ -1,5 +1,10 @@
 import UserModel from "../models/user.model";
 import { User } from "../types/user.type";
+import axios from "axios";
+import { OAuth2Client } from "google-auth-library";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { env } from "../config/env";
 
 export const UserService = {
   async createUser(user: User) {
@@ -201,6 +206,107 @@ export const UserService = {
       { phone, countryCode },
       { $unset: { loginOtp: "", loginOtpExpiry: "" } }
     );
+  },
+
+  // Social login helpers
+  async upsertSocialUser(params: { email: string; fullName?: string; image?: string; provider: 'google' | 'apple'; providerId: string }) {
+    const { email, fullName, image, provider, providerId } = params;
+    const name = fullName || (email ? email.split('@')[0] : 'User');
+    const update: any = {
+      name,
+      fullName: fullName || name,
+      image,
+      isActive: true,
+    };
+    update[`${provider}Id`] = providerId;
+    const user = await UserModel.findOneAndUpdate(
+      { email },
+      { $set: update },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+    return user;
+  },
+
+  async verifyGoogleIdToken(idToken: string) {
+    if (!idToken) throw new Error('Missing Google id token');
+    //   const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
+    // const resp = await axios.get(url);
+    // const data = resp.data;
+    // // optional audience check
+    // if (env.googleClientId && data.aud && data.aud !== env.googleClientId) {
+    //   throw new Error('Invalid Google token audience');
+    // }
+    // Use google-auth-library for robust verification
+    const client = new OAuth2Client(env.googleClientId || undefined);
+    const ticket: any = await client.verifyIdToken({ idToken, audience: env.googleClientId || undefined });
+    const data: any = ticket.getPayload() || {};
+    return {
+      email: data.email,
+      emailVerified: data.email_verified === 'true' || data.email_verified === true,
+      name: data.name,
+      picture: data.picture,
+      sub: data.sub,
+    };
+  },
+
+  async loginWithGoogle(idToken: string) {
+    const payload = await (this as any).verifyGoogleIdToken(idToken);
+    if (!payload.email) throw new Error('Google token did not contain email');
+    const user = await (this as any).upsertSocialUser({
+      email: payload.email,
+      fullName: payload.name,
+      image: payload.picture,
+      provider: 'google',
+      providerId: payload.sub,
+    });
+    return user;
+  },
+
+  // Apple: fetch jwks and verify token using crypto.createPublicKey with JWK
+  _appleJwksCache: {} as any,
+
+  async _getAppleJwks() {
+    const cache = (this as any)._appleJwksCache || {};
+    const now = Date.now();
+    if (cache.keys && cache.fetchedAt && now - cache.fetchedAt < 1000 * 60 * 60) {
+      return cache.keys;
+    }
+    const resp = await axios.get('https://appleid.apple.com/auth/keys');
+    const keys = resp.data.keys || [];
+    (this as any)._appleJwksCache = { keys, fetchedAt: now };
+    return keys;
+  },
+
+  async verifyAppleIdToken(idToken: string) {
+    if (!idToken) throw new Error('Missing Apple id token');
+    const decoded: any = jwt.decode(idToken, { complete: true });
+    if (!decoded || !decoded.header) throw new Error('Invalid Apple token');
+    const kid = decoded.header.kid;
+    const alg = decoded.header.alg;
+    const keys = await (this as any)._getAppleJwks();
+    const jwk = keys.find((k: any) => k.kid === kid && k.alg === alg);
+    if (!jwk) throw new Error('Apple public key not found for token');
+    // Convert JWK to PEM using crypto.createPublicKey
+    const publicKey = crypto.createPublicKey({ key: { kty: jwk.kty, n: jwk.n, e: jwk.e }, format: 'jwk' }).export({ type: 'spki', format: 'pem' });
+    const options: any = { algorithms: ['RS256'], issuer: 'https://appleid.apple.com' };
+    if (env.appleAudience) options.audience = env.appleAudience;
+    else if (env.appleClientId) options.audience = env.appleClientId;
+    const payload = jwt.verify(idToken, publicKey as any, options) as any;
+    return payload;
+  },
+
+  async loginWithApple(idToken: string) {
+    const payload = await (this as any).verifyAppleIdToken(idToken);
+    const email = payload.email;
+    if (!email) throw new Error('Apple token did not contain email');
+    const user = await (this as any).upsertSocialUser({
+      email,
+      fullName: payload.name && (payload.name.firstName || payload.name.lastName) ? `${payload.name.firstName || ''} ${payload.name.lastName || ''}`.trim() : undefined,
+      image: undefined,
+      provider: 'apple',
+      providerId: payload.sub,
+    });
+    return user;
   },
 
   async updateUserProfile(userId: string, data: { image?: string; dob?: Date; fullName?: string; email?: string }) {
