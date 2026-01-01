@@ -43,7 +43,8 @@ export const PartyController = {
                     parties,
                     total,
                     page: page || 1,
-                    limit: limit || parties.length
+                    limit: limit || parties.length,
+                    totalPages: Math.ceil(total / (limit || parties.length)),
                 });
             }
 

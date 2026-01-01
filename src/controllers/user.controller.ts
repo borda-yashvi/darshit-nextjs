@@ -302,7 +302,7 @@ export const UserController = {
         return errorResponse(res, 400, validation.error.issues[0].message);
       }
 
-      const { phone, countryCode, otp, device_id } = validation.data;
+      const { phone, countryCode, otp , company_brand, company_device, device_id, company_model, app_version } = validation.data;
 
       // Verify OTP
       // const isValidOtp = await UserService.verifyLoginOtp(phone, countryCode, otp);
