@@ -442,6 +442,7 @@ export async function generateSareePdf(data) {
       <th>F3</th>
       <th>F4</th>
       <th>F5</th>
+      <th>F6</th>
       <th>REPEAT</th>
       <th>TOTAL</th>
     </tr>
@@ -454,13 +455,14 @@ export async function generateSareePdf(data) {
         <td>${r.f3}</td>
         <td>${r.f4}</td>
         <td>${r.f5}</td>
+        <td>${r.f6}</td>
         <td>${r.repeat}</td>
         <td>${r.total}</td>
       </tr>
     `).join("")}
 
     <tr>
-      <td colspan="7" class="footer-total">TOTAL SAREES</td>
+      <td colspan="8" class="footer-total">TOTAL SAREES</td>
       <td><b>${data.totalSarees}</b></td>
     </tr>
   </table>
