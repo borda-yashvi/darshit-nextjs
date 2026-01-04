@@ -99,7 +99,7 @@ export const OrderController = {
             const partyId = anyReq.query && anyReq.query.partyId ? String(anyReq.query.partyId) : undefined;
 
             const { orders, total } = await OrderService.getOrdersByUser(userId, search, page, limit, partyId);
-            return successResponse(res, { orders, total, page: page || 1, limit: limit || orders.length });
+            return successResponse(res, { orders, total, page: page || 1, limit: limit || orders.length, totalPages: Math.ceil(total / (limit || orders.length || total)) });
         } catch (err: any) {
             return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }

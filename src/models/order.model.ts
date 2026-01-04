@@ -24,5 +24,11 @@ const orderSchema = new Schema(
     { timestamps: true }
 );
 
+orderSchema.virtual("orderTables", {
+    ref: "OrderTable",
+    localField: "_id",
+    foreignField: "order",
+});
+
 const OrderModel = model("Order", orderSchema);
 export default OrderModel;
