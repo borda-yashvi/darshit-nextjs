@@ -25,7 +25,7 @@ export const OrderService = {
             ];
         }
         const total = await OrderModel.countDocuments(baseQuery);
-        let q = OrderModel.find(baseQuery).sort({ createdAt: -1 }).populate("party", "_id partyName mobile");
+        let q = OrderModel.find(baseQuery).sort({ createdAt: -1 }).populate("party", "_id partyName mobile").populate("orderTables")
         if (page !== undefined && limit !== undefined && Number(limit) > 0) {
             const p = Number(page) || 1;
             const l = Number(limit) || 10;
@@ -95,7 +95,10 @@ export const OrderService = {
             order: orderView,
             rows,
             aggregates,
-            total
+            total,
+            page: page || 1,
+            limit: limit || rows.length,
+            totalPages: Math.ceil(total / (limit || total))
         };
     },
 
