@@ -169,7 +169,6 @@ export const OrderController = {
 
             // extract rows from payload if present
             let rowsRaw: any = payload.rows;
-            delete payload.rows;
 
             // convert numeric fields if present
             if (payload.qty) payload.qty = Number(payload.qty);
@@ -192,15 +191,26 @@ export const OrderController = {
             }
 
             if (Array.isArray(rowsRaw) && rowsRaw.length) {
-                const toCreate = rowsRaw.filter((r: any) => !r._id).map((r: any, idx: number) => ({
-                    order: orderId,
-                    orderIndex: r.orderIndex ?? idx,
-                    ...r
-                }));
+                // partition rows based on flags
+                const rows = rowsRaw as any[];
 
-                const toUpdate = rowsRaw.filter((r: any) => r._id).map((r: any) => ({
+                // rows marked for deletion (must have _id)
+                const toDeleteIds = rows.filter((r: any) => r.isDeleted && (r._id || r.id)).map((r: any) => r._id || r.id);
+
+                // rows marked as added
+                const toCreate = rows.filter((r: any) => r.isAdded).map((r: any, idx: number) => {
+                    const item: any = { order: orderId, orderIndex: r.orderIndex ?? idx, ...r };
+                    // remove client side helper fields
+                    delete item._id || item.id;
+                    delete item.isAdded;
+                    delete item.isDeleted;
+                    return item;
+                });
+
+                // rows to update (existing rows without isDeleted/isAdded)
+                const toUpdate = rows.filter((r: any) => !r.isAdded && !r.isDeleted && r._id).map((r: any) => ({
                     _id: r._id,
-                    orderIndex: r.orderIndex,
+                    // orderIndex: r.orderIndex,
                     f1: r.f1,
                     f2: r.f2,
                     f3: r.f3,
@@ -211,6 +221,12 @@ export const OrderController = {
                     total: r.total !== undefined ? Number(r.total) : r.total
                 }));
 
+                // perform deletions first
+                if (toDeleteIds.length) {
+                    OrderTableService.deleteRows(toDeleteIds);
+                }
+
+                // create new rows
                 if (toCreate.length) {
                     // normalize numeric fields
                     toCreate.forEach((p: any) => {
@@ -220,12 +236,15 @@ export const OrderController = {
                     createdRows = await OrderTableService.createRows(toCreate);
                 }
 
+                // update remaining rows
                 if (toUpdate.length) {
                     updatedRows = await bulkUpdateRows(toUpdate);
                 }
+
+                (req as any)._deletedRows = toDeleteIds;
             }
 
-            return successResponse(res, { order: updatedOrder, createdRows, updatedRows });
+            return successResponse(res, { order: updatedOrder, createdRows, updatedRows, deletedRows: (req as any)._deletedRows });
         } catch (err: any) {
             return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }

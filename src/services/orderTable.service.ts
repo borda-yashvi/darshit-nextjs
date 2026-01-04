@@ -20,6 +20,12 @@ export const OrderTableService = {
         return OrderTableModel.findByIdAndDelete(id).lean();
     },
 
+    async deleteRows(ids: string[]) {
+        return OrderTableModel.deleteMany({
+            _id: { $in: ids },
+        });
+    },
+
     async getRowsByOrder(orderId: string, page?: number, limit?: number) {
         const query: any = { order: orderId };
         const total = await OrderTableModel.countDocuments(query);
