@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { UserService } from "../services/user.service";
 import { errorResponse } from "../utils/response.util";
+import UserDeviceModel from "../models/userDevice.model";
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -49,14 +50,12 @@ export const authMiddleware = (
         }
       }
 
-      // Device enforcement: require device id header and ensure device is registered
+      // Device enforcement: require device id header/token and ensure device is registered in device table
       const deviceId = (req.get("x-device-id") || req.get("device-id")) || decoded.deviceId;
-      // if (!deviceId) {
-      //   return errorResponse(res, 400, "Device id required in 'x-device-id' header.");
-      // }
 
       if (deviceId) {
-        const foundDevice = (user.devices || []).find((d: any) => d.deviceId === deviceId);
+        // validate against UserDevice collection (migration moved devices out of user document)
+        const foundDevice = await UserDeviceModel.findOne({ userId: user._id, deviceId }).lean();
         if (!foundDevice) {
           return errorResponse(res, 401, "Device not registered for this user.");
         }

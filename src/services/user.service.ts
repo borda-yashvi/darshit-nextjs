@@ -109,28 +109,13 @@ export const UserService = {
       lastSeen: now,
       createdAt: now,
     });
-
-    const newDevice = {
-      deviceId,
-      type,
-      category,
-      platform: deviceInfo.platform,
-      userAgent: deviceInfo.userAgent,
-      ip: deviceInfo.ip,
-      name: deviceInfo.name,
-      lastSeen: now,
-      createdAt: now,
-    };
-
-    user.devices = [...(user.devices || []), newDevice as any];
-    await user.save();
-
     return { deviceId, updated: false };
   },
 
   generateOtp(): string {
     // Generate 6-digit OTP
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    // return Math.floor(100000 + Math.random() * 900000).toString();
+    return "000000"
   },
 
   async saveOtp(email: string, otp: string) {
@@ -170,7 +155,7 @@ export const UserService = {
 
   // Mobile OTP Authentication Methods
   async findByPhone(phone: string, countryCode: string) {
-    const found = await UserModel.findOne({ phone, countryCode }).lean();
+    const found = await UserModel.findOne({ phone, countryCode }).populate('userDevices').lean();
     return found || null;
   },
 

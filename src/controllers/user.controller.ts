@@ -303,7 +303,7 @@ export const UserController = {
       if (!user) {
         return errorResponse(res, 404, "User not found. Please signup first.");
       }
-      if (user?.devices?.length >= 3) {
+      if ((user as any)?.userDevices?.length >= 3) {
         return errorResponse(res, 403, "Device limit reached. Please register a new device.");
       }
 

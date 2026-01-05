@@ -49,5 +49,11 @@ const userSchema = new Schema(
     { timestamps: true }
 );
 
+userSchema.virtual("userDevices", {
+    ref: "UserDevice",
+    localField: "_id",
+    foreignField: "userId",
+});
+
 const UserModel = model("User", userSchema);
 export default UserModel;
