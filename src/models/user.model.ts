@@ -40,7 +40,11 @@ const userSchema = new Schema(
         dob: { type: Date },
         image: { type: String },
         loginOtp: { type: String },
-        loginOtpExpiry: { type: Date }
+        loginOtpExpiry: { type: Date },
+        // OTP send rate-limiting fields
+        loginOtpSentAt: { type: Date },
+        loginOtpSendCount: { type: Number, default: 0 },
+        loginOtpWindowStart: { type: Date }
     },
     { timestamps: true }
 );

@@ -1,4 +1,7 @@
 import UserModel from "../models/user.model";
+import OtpModel from "../models/otp.model";
+import UserDeviceModel from "../models/userDevice.model";
+import { Types } from "mongoose";
 import { User } from "../types/user.type";
 import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
@@ -42,61 +45,71 @@ export const UserService = {
   },
 
   async upsertDevice(userId: string, deviceInfo: any) {
-    const doc = await UserModel.findById(userId);
-    if (!doc) throw new Error("User not found");
-
     const now = new Date();
     const deviceId = deviceInfo.deviceId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const type = (deviceInfo.type || "unknown").toLowerCase();
     const category = ((type === "laptop" || type === "pc") ? "laptop" : (type === "tablet" || type === "mobile" ? "mobile" : "other")) as "mobile" | "laptop" | "other";
 
-    // check if device exists
-    const existingIndex = (doc.devices || []).findIndex((d: any) => d.deviceId === deviceId);
-    if (existingIndex > -1) {
-      // update lastSeen and metadata
-      const d: any = doc.devices![existingIndex];
-      d.lastSeen = now;
-      d.userAgent = deviceInfo.userAgent || d.userAgent;
-      d.ip = deviceInfo.ip || d.ip;
-      d.platform = deviceInfo.platform || d.platform;
-      d.name = deviceInfo.name || d.name;
-      doc.markModified("devices");
-      await doc.save();
+    // ensure user exists
+    const user = await UserModel.findById(userId);
+    if (!user) throw new Error("User not found");
+
+    // find existing device
+    const existing = await UserDeviceModel.findOne({ userId: new Types.ObjectId(userId), deviceId });
+    if (existing) {
+      (existing as any).lastSeen = now;
+      (existing as any).userAgent = deviceInfo.userAgent || (existing as any).userAgent;
+      (existing as any).ip = deviceInfo.ip || (existing as any).ip;
+      (existing as any).platform = deviceInfo.platform || (existing as any).platform;
+      (existing as any).name = deviceInfo.name || (existing as any).name;
+      (existing as any).companyBrand = deviceInfo.companyBrand || (existing as any).companyBrand;
+      (existing as any).companyDevice = deviceInfo.companyDevice || (existing as any).companyDevice;
+      (existing as any).companyModel = deviceInfo.companyModel || (existing as any).companyModel;
+      (existing as any).appVersion = deviceInfo.appVersion || (existing as any).appVersion;
+      await existing.save();
       return { deviceId, updated: true };
     }
 
-    // enforce limits: mobile/tablet -> max 2, laptop/pc -> max 1, total max 3
-    const devices = doc.devices || [];
+    // enforce limits per user
+    const devices = await UserDeviceModel.find({ userId: new Types.ObjectId(userId) }).sort({ createdAt: 1 }).lean();
     const mobileCount = devices.filter((x: any) => x.category === "mobile").length;
     const laptopCount = devices.filter((x: any) => x.category === "laptop").length;
 
-    // if adding would exceed category limits, remove oldest in that category
+    // remove oldest in category if limit exceeded
     if (category === "mobile" && mobileCount >= 2) {
-      // remove oldest mobile
-      const mobiles = devices.filter((x: any) => x.category === "mobile");
-      mobiles.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      const oldestId = mobiles[0].deviceId;
-      doc.devices = devices.filter((x: any) => x.deviceId !== oldestId);
+      const oldest = devices.filter((x: any) => x.category === "mobile")[0];
+      if (oldest) await UserDeviceModel.deleteOne({ _id: (oldest as any)._id });
     }
     if (category === "laptop" && laptopCount >= 1) {
-      const laptops = devices.filter((x: any) => x.category === "laptop");
-      laptops.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      const oldestId = laptops[0].deviceId;
-      doc.devices = devices.filter((x: any) => x.deviceId !== oldestId);
+      const oldest = devices.filter((x: any) => x.category === "laptop")[0];
+      if (oldest) await UserDeviceModel.deleteOne({ _id: (oldest as any)._id });
     }
 
-    // enforce total limit: if after removals total >=3, remove oldest overall
-    let curDevices = doc.devices || [];
-    if (curDevices.length >= 3) {
-      curDevices.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      // remove oldest until length < 3
-      while (curDevices.length >= 3) {
-        curDevices.shift();
-      }
-      doc.devices = curDevices;
+    // enforce total limit 3
+    let curDevices = await UserDeviceModel.find({ userId: new Types.ObjectId(userId) }).sort({ createdAt: 1 }).lean();
+    while (curDevices.length >= 3) {
+      await UserDeviceModel.deleteOne({ _id: (curDevices[0] as any)._id });
+      curDevices.shift();
     }
 
-    // push new device
+    // create new device
+    const created = await UserDeviceModel.create({
+      userId: new Types.ObjectId(userId),
+      deviceId,
+      type,
+      category,
+      platform: deviceInfo.platform,
+      companyBrand: deviceInfo.companyBrand,
+      companyDevice: deviceInfo.companyDevice,
+      companyModel: deviceInfo.companyModel,
+      appVersion: deviceInfo.appVersion,
+      userAgent: deviceInfo.userAgent,
+      ip: deviceInfo.ip,
+      name: deviceInfo.name,
+      lastSeen: now,
+      createdAt: now,
+    });
+
     const newDevice = {
       deviceId,
       type,
@@ -109,8 +122,9 @@ export const UserService = {
       createdAt: now,
     };
 
-    doc.devices = [...(doc.devices || []), newDevice as any];
-    await doc.save();
+    user.devices = [...(user.devices || []), newDevice as any];
+    await user.save();
+
     return { deviceId, updated: false };
   },
 
@@ -160,16 +174,18 @@ export const UserService = {
     return found || null;
   },
 
-  async createUserByPhone(data: { fullName: string; phone: string; countryCode: string }) {
+  async createUserByPhone(data: { fullName: string; phone: string; countryCode: string }, opts?: { isActive?: boolean }) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    const isActive = opts && typeof opts.isActive === 'boolean' ? opts.isActive : true;
 
     const created = await UserModel.create({
       fullName: data.fullName,
       phone: data.phone,
       countryCode: data.countryCode,
       name: data.fullName, // Set name same as fullName for compatibility
-      isActive: true,
+      isActive: isActive,
       payment: {
         type: "free",
         startDate: now,
@@ -181,31 +197,134 @@ export const UserService = {
     return created.toObject();
   },
 
-  async saveLoginOtp(phone: string, countryCode: string, otp: string) {
+  async saveLoginOtp(phone: string, countryCode: string, otp: string, opts?: { purpose?: 'signup' | 'login'; fullName?: string; deviceInfo?: any }) {
+    const now = new Date();
+    const cooldownSeconds = 60; // 60s between sends
+    const windowMs = 60 * 60 * 1000; // 1 hour window
+    const maxPerWindow = 5; // max sends per window
+
+    // For login calls, ensure user exists. For signup, user may not yet exist.
+    if (!opts || opts.purpose !== 'signup') {
+      const user = await UserModel.findOne({ phone, countryCode }).lean();
+      if (!user) throw new Error('User not found');
+    }
+
+    // fetch existing otp doc
+    const doc: any = await OtpModel.findOne({ phone, countryCode });
+
+    // Check cooldown
+    if (doc && doc.sentAt) {
+      const diff = now.getTime() - new Date(doc.sentAt).getTime();
+      if (diff < cooldownSeconds * 1000) {
+        const retryAfter = Math.ceil((cooldownSeconds * 1000 - diff) / 1000);
+        const err: any = new Error(`OTP was sent recently. Please wait ${retryAfter} seconds.`);
+        err.name = 'RateLimitError';
+        err.retryAfter = retryAfter;
+        throw err;
+      }
+    }
+
+    // Check window count
+    let windowStart = doc && doc.windowStart ? new Date(doc.windowStart) : null;
+    let count = doc && doc.sendCount ? doc.sendCount : 0;
+    if (!windowStart || now.getTime() - windowStart.getTime() > windowMs) {
+      windowStart = now;
+      count = 1;
+    } else {
+      if (count >= maxPerWindow) {
+        const retryAfter = Math.ceil((windowMs - (now.getTime() - windowStart.getTime())) / 1000);
+        const err: any = new Error(`OTP send limit exceeded. Try again in ${retryAfter} seconds.`);
+        err.name = 'RateLimitError';
+        err.retryAfter = retryAfter;
+        throw err;
+      }
+      count += 1;
+    }
+
     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-    const updated = await UserModel.findOneAndUpdate(
+
+    const updatePayload: any = {
+      otp,
+      expiry,
+      sentAt: now,
+      sendCount: count,
+      windowStart,
+      deviceMeta: (opts && opts.deviceInfo) || {},
+      purpose: (opts && opts.purpose) || 'login'
+    };
+
+    if (opts && opts.purpose === 'signup') {
+      if (opts.fullName) updatePayload.pendingFullName = opts.fullName;
+      if (phone) updatePayload.phone = phone;
+      if (countryCode) updatePayload.countryCode = countryCode;
+    }
+
+    const updated = await OtpModel.findOneAndUpdate(
       { phone, countryCode },
-      { loginOtp: otp, loginOtpExpiry: expiry },
-      { new: true }
+      updatePayload,
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     ).lean();
+
     return updated;
   },
 
-  async verifyLoginOtp(phone: string, countryCode: string, otp: string): Promise<boolean> {
-    const user = await UserModel.findOne({ phone, countryCode }).lean();
-    if (!user) return false;
-    if (!user.loginOtp || !user.loginOtpExpiry) return false;
+  async verifyLoginOtp(phone: string, countryCode: string, otp: string, deviceMeta: any): Promise<{ doc?: any; isValid: boolean }> {
 
-    // Check if OTP matches and not expired
-    const isValid = user.loginOtp === otp && new Date(user.loginOtpExpiry) > new Date();
-    return isValid;
+    const query: any = {
+      phone,
+      countryCode
+    };
+
+    // Match only available fields
+    if (deviceMeta && deviceMeta.deviceId) {
+      query["deviceMeta.deviceId"] = deviceMeta.deviceId;
+    }
+    if (deviceMeta && deviceMeta.companyBrand) {
+      query["deviceMeta.companyBrand"] = deviceMeta.companyBrand;
+    }
+    if (deviceMeta && deviceMeta.companyDevice) {
+      query["deviceMeta.companyDevice"] = deviceMeta.companyDevice;
+    }
+    if (deviceMeta && deviceMeta.companyModel) {
+      query["deviceMeta.companyModel"] = deviceMeta.companyModel;
+    }
+    if (deviceMeta && deviceMeta.appVersion) {
+      query["deviceMeta.appVersion"] = deviceMeta.appVersion;
+    }
+
+    // Fetch mutable doc so we can update status
+    const doc: any = await OtpModel.findOne(query);
+    if (!doc) return { isValid: false };
+    if (!doc.otp || !doc.expiry) return { isValid: false };
+
+    const notExpired = new Date(doc.expiry) > new Date();
+
+    if (!notExpired) {
+      await OtpModel.findOneAndUpdate({ _id: doc._id }, { status: 'expired' });
+      return { isValid: false };
+    } else {
+      await OtpModel.findOneAndUpdate({ _id: doc._id }, { status: 'used' });
+    }
+
+    const isValid = (doc.otp === otp) && notExpired;
+
+    return { doc: doc.toObject ? doc.toObject() : doc, isValid };
   },
 
   async clearLoginOtp(phone: string, countryCode: string) {
-    await UserModel.findOneAndUpdate(
-      { phone, countryCode },
-      { $unset: { loginOtp: "", loginOtpExpiry: "" } }
-    );
+    await OtpModel.findOneAndDelete({ phone, countryCode });
+  },
+
+  async activateUser(userId: string, deviceInfo?: any) {
+    const updated = await UserModel.findByIdAndUpdate(userId, { isActive: true }, { new: true }).lean();
+    if (deviceInfo) {
+      try {
+        await (this as any).upsertDevice(userId, deviceInfo);
+      } catch (err) {
+        console.error('Device upsert failed during activateUser:', err);
+      }
+    }
+    return updated;
   },
 
   // Social login helpers
@@ -320,5 +439,57 @@ export const UserService = {
     if (data.email !== undefined) updateData.email = data.email;
 
     return UserModel.findByIdAndUpdate(userId, updateData, { new: true }).lean();
+  },
+
+  // Migration helper: move legacy loginOtp and devices to new collections
+  async migrateOtpAndDevices() {
+    // Migrate loginOtp -> OtpModel
+    const usersWithOtp = await UserModel.find({ $or: [{ loginOtp: { $exists: true, $ne: null } }, { loginOtpExpiry: { $exists: true, $ne: null } }] });
+    for (const u of usersWithOtp) {
+      try {
+        const phone = u.phone;
+        const countryCode = u.countryCode;
+        const otp = u.loginOtp;
+        const expiry = u.loginOtpExpiry;
+        if (phone && countryCode && otp && expiry) {
+          await OtpModel.findOneAndUpdate({ phone, countryCode }, { otp, expiry, sentAt: u.updatedAt || new Date() }, { upsert: true });
+          await UserModel.findByIdAndUpdate(u._id, { $unset: { loginOtp: "", loginOtpExpiry: "" } });
+        }
+      } catch (err) {
+        console.error('OTP migration failed for user', u._id, err);
+      }
+    }
+
+    // Migrate devices -> UserDeviceModel
+    const usersWithDevices = await UserModel.find({ devices: { $exists: true, $ne: [] } });
+    for (const u of usersWithDevices) {
+      try {
+        const arr = u.devices || [];
+        for (const d of arr) {
+          await UserDeviceModel.findOneAndUpdate(
+            { userId: u._id, deviceId: d.deviceId },
+            {
+              userId: u._id,
+              deviceId: d.deviceId,
+              type: d.type,
+              category: d.category,
+              platform: d.platform,
+              userAgent: d.userAgent,
+              ip: d.ip,
+              name: d.name,
+              lastSeen: d.lastSeen || d.createdAt,
+              createdAt: d.createdAt || new Date()
+            },
+            { upsert: true }
+          );
+        }
+        // Optionally keep devices array or clear it – we clear to avoid duplication
+        await UserModel.findByIdAndUpdate(u._id, { $unset: { devices: "" } });
+      } catch (err) {
+        console.error('Device migration failed for user', u._id, err);
+      }
+    }
+
+    return { migratedOtps: usersWithOtp.length, migratedDeviceUsers: usersWithDevices.length };
   },
 };
