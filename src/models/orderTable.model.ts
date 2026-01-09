@@ -10,6 +10,7 @@ const orderTableSchema = new Schema(
         f4: { type: String },
         f5: { type: String },
         f6: { type: String },
+        qty: { type: String },
         repit: { type: Number },
         total: { type: Number }
     },

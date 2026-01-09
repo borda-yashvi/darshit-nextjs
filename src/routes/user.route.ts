@@ -22,4 +22,7 @@ router.post("/verify-otp", UserController.verifyOtp);
 router.post("/resend-otp", UserController.resendOtp);
 router.put("/profile-mobile", authMiddleware, upload.single("image"), UserController.updateProfileMobile);
 
+router.post("/logout", UserController.logout);
+router.delete("/profile", UserController.deleteProfile);
+
 export default router;

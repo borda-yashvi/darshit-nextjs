@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { OrderService } from "../services/order.service";
-import { OrderTableService, deleteRowsByOrder, reorderRowsByIds, bulkUpdateRows } from "../services/orderTable.service";
+import { OrderTableService, deleteRowsByOrder, bulkUpdateRows } from "../services/orderTable.service";
 import { uploadImage, deleteImage } from "../config/cloudinary";
 import { generateSareePdf } from "../pdf/sareePdf";
 import { successResponse, errorResponse } from "../utils/response.util";
@@ -44,7 +44,7 @@ export const OrderController = {
                 saller,
                 designNo,
                 pick,
-                qty: qty ? Number(qty) : undefined,
+                qty,
                 totalMtrRepit: totalMtrRepit ? Number(totalMtrRepit) : undefined,
                 totalColor: totalColor ? Number(totalColor) : undefined,
                 imageUrl,
@@ -70,10 +70,11 @@ export const OrderController = {
                         orderIndex: r.orderIndex ?? idx,
                         ...r
                     }));
-                    // normalize numeric fields
+                    // normalize numeric/string fields
                     payloads.forEach((p: any) => {
                         if (p.repit !== undefined) p.repit = Number(p.repit);
                         if (p.total !== undefined) p.total = Number(p.total);
+                        if (p.qty !== undefined) p.qty = String(p.qty);
                     });
                     createdRows = await OrderTableService.createRows(payloads);
                 }
@@ -117,7 +118,7 @@ export const OrderController = {
             try {
                 await OrderService.updateOrder(orderId, {
                     $inc: { "views.count": 1 },
-                    $set: { "views.lastViewedAt": new Date() }
+                    $set: { "views.lastViewedAt": new Date().toISOString() }
                 } as any);
             } catch (e) {
                 // ignore view increment failures
@@ -141,7 +142,6 @@ export const OrderController = {
                 payload.imagePublicId = uploaded.public_id;
             }
             // convert numeric fields if present
-            if (payload.qty) payload.qty = Number(payload.qty);
             if (payload.totalMtrRepit) payload.totalMtrRepit = Number(payload.totalMtrRepit);
             if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
             const updated = await OrderService.updateOrder(orderId, payload);
@@ -171,7 +171,6 @@ export const OrderController = {
             let rowsRaw: any = payload.rows;
 
             // convert numeric fields if present
-            if (payload.qty) payload.qty = Number(payload.qty);
             if (payload.totalMtrRepit) payload.totalMtrRepit = Number(payload.totalMtrRepit);
             if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
 
@@ -217,6 +216,7 @@ export const OrderController = {
                     f4: r.f4,
                     f5: r.f5,
                     f6: r.f6,
+                    qty: r.qty !== undefined ? String(r.qty) : r.qty,
                     repit: r.repit !== undefined ? Number(r.repit) : r.repit,
                     total: r.total !== undefined ? Number(r.total) : r.total
                 }));
@@ -228,10 +228,11 @@ export const OrderController = {
 
                 // create new rows
                 if (toCreate.length) {
-                    // normalize numeric fields
+                    // normalize numeric/string fields
                     toCreate.forEach((p: any) => {
                         if (p.repit !== undefined) p.repit = Number(p.repit);
                         if (p.total !== undefined) p.total = Number(p.total);
+                        if (p.qty !== undefined) p.qty = String(p.qty);
                     });
                     createdRows = await OrderTableService.createRows(toCreate);
                 }
@@ -258,11 +259,16 @@ export const OrderController = {
             const body: any = anyReq.body;
             // if client sends an array of rows create many
             if (Array.isArray(body)) {
-                const payloads = body.map((b: any, idx: number) => ({ order: orderId, orderIndex: b.orderIndex ?? idx, ...b }));
+                const payloads = body.map((b: any, idx: number) => {
+                    const p: any = { order: orderId, orderIndex: b.orderIndex ?? idx, ...b };
+                    if (p.qty !== undefined) p.qty = String(p.qty);
+                    return p;
+                });
                 const rows = await OrderTableService.createRows(payloads);
                 return successResponse(res, { rows });
             }
-            const payload = { order: orderId, ...body };
+            const payload: any = { order: orderId, ...body };
+            if (payload.qty !== undefined) payload.qty = String(payload.qty);
             const row = await OrderTableService.createRow(payload);
             return successResponse(res, { row });
         } catch (err: any) {
@@ -270,14 +276,22 @@ export const OrderController = {
         }
     },
 
-    // reorder rows within an order by receiving an array of row ids in desired order
+    // reorder / duplicate rows or duplicate entire order
+    // - If request body contains an array of row ids -> duplicate those rows into the same order
+    // - If no body array is provided -> duplicate the entire order (create a new order + copy all its rows)
     async reorderRows(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.id;
-            const ids: string[] = req.body;
-            if (!Array.isArray(ids)) return errorResponse(res, 400, "Expected an array of row ids");
-            const result = await reorderRowsByIds(orderId, ids);
-            return successResponse(res, { result });
+            const partyId = req.params.id;
+            const anyReq: any = req;
+            const body = anyReq.body;
+
+            if (!Array.isArray(body) || !body.length) {
+                return errorResponse(res, 400, "Expected an array of order ids in request body");
+            }
+
+            // Duplicate each order from the body into the provided party id
+            const result = await OrderService.reorderRowsByIds(req.user.id, partyId, body as string[]);
+            return successResponse(res, { duplicated: result.duplicated });
         } catch (err: any) {
             return errorResponse(res, 500, "Internal Server Error", { error: err.message });
         }
@@ -376,7 +390,7 @@ export const OrderController = {
                 saler: order.saller || '',
                 designNo: order.designNo || '',
                 pick: order.pick || '',
-                quality: '', // Add quality field to order model if needed
+                quality:  order.qty, // Add quality field to order model if needed
                 totalMeter: order.totalMtrRepit ? String(order.totalMtrRepit) : '',
                 totalColor: order.totalColor ? String(order.totalColor) : '',
                 totalSarees: totalSarees,

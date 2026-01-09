@@ -31,7 +31,7 @@ export const UserService = {
   },
 
   async getUser(id: string) {
-    const found = await UserModel.findById(id).lean();
+    const found = await UserModel.findById(id).populate('userDevices').lean();
     return found || null;
   },
 
@@ -106,6 +106,7 @@ export const UserService = {
       userAgent: deviceInfo.userAgent,
       ip: deviceInfo.ip,
       name: deviceInfo.name,
+      isActive: deviceInfo.isActive !== undefined ? deviceInfo.isActive : true,
       lastSeen: now,
       createdAt: now,
     });
@@ -155,7 +156,7 @@ export const UserService = {
 
   // Mobile OTP Authentication Methods
   async findByPhone(phone: string, countryCode: string) {
-    const found = await UserModel.findOne({ phone, countryCode }).populate('userDevices').lean();
+    const found = await UserModel.findOne({ phone, countryCode, isActive: true, deleted_at: null }).populate('userDevices').lean();
     return found || null;
   },
 
@@ -476,5 +477,21 @@ export const UserService = {
     }
 
     return { migratedOtps: usersWithOtp.length, migratedDeviceUsers: usersWithDevices.length };
+  },
+
+  async logout(userId: string, deviceId: string) {
+    // Remove device from userDevice table by deviceId
+    const result = await UserDeviceModel.deleteOne({ userId: new Types.ObjectId(userId), deviceId });
+    return result;
+  },
+
+  async deleteProfile(userId: string) {
+    // Soft delete: set deleted_at timestamp
+    const result = await UserModel.findByIdAndUpdate(
+      userId,
+      { deleted_at: new Date(), isActive: false },
+      { new: true }
+    ).lean();
+    return result;
   },
 };

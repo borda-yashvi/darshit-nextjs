@@ -16,7 +16,7 @@ router.put("/:id/with-rows", authMiddleware, upload.single("image"), OrderContro
 
 // order-table routes
 router.post("/:id/rows", authMiddleware, OrderController.addRow);
-router.put("/:id/rows", authMiddleware, OrderController.reorderRows);
+router.post("/:id/reorder", authMiddleware, OrderController.reorderRows);
 router.put("/rows/:rowId", authMiddleware, OrderController.updateRow);
 router.delete("/rows/:rowId", authMiddleware, OrderController.deleteRow);
 router.delete("/:id", authMiddleware, OrderController.delete);

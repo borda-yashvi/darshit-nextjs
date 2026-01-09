@@ -4,7 +4,6 @@ import { env } from "../config/env";
 import { UserService } from "../services/user.service";
 import bcrypt from "bcryptjs";
 import { successResponse, errorResponse } from "../utils/response.util";
-import { de } from "zod/v4/locales";
 
 
 export const UserController = {
@@ -297,20 +296,33 @@ export const UserController = {
       }
 
       const { phone, countryCode, company_brand, company_device, device_id, company_model, app_version } = validation.data;
+      const anyReq: any = req;
 
       // Check if user exists
       const user = await UserService.findByPhone(phone, countryCode);
       if (!user) {
         return errorResponse(res, 404, "User not found. Please signup first.");
       }
-      if ((user as any)?.userDevices?.length >= 3) {
+
+      // Determine device id from validated data or request body/header
+      const deviceId = device_id || anyReq.body.device_id || anyReq.body.deviceId || req.header("x-device-id");
+      const existingDevice = (user as any)?.userDevices?.find((d: any) => String(d.deviceId) === String(deviceId));
+
+      // Enforce device limit: if user already has many devices (>=3), only allow if this is the same device and it's active
+      const deviceCount = (user as any)?.userDevices?.length || 0;
+      if (deviceCount >= 3 && !existingDevice) {
         return errorResponse(res, 403, "Device limit reached. Please register a new device.");
+      }
+      if (existingDevice && existingDevice.isActive === false) {
+        return errorResponse(res, 403, "This device is inactive. Please register an active device.");
       }
 
       // Generate 6-digit OTP
       const otp = UserService.generateOtp();
+
+      // Build device info payload (use validated fields primarily)
       const deviceInfo = {
-        deviceId: device_id || "",
+        deviceId: deviceId || "",
         type: company_device || "mobile",
         platform: company_brand || "",
         name: company_model || "",
@@ -319,7 +331,9 @@ export const UserController = {
         companyModel: company_model || "",
         appVersion: app_version || "",
         userAgent: `${company_brand || ""} ${company_model || ""} v${app_version || ""}`.trim(),
+        ip: req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
       }
+
       // Save OTP to database with rate-limit checks
       try {
         await UserService.saveLoginOtp(phone, countryCode, otp, { purpose: 'login', deviceInfo });
@@ -331,8 +345,12 @@ export const UserController = {
       }
 
       // Update device info if provided
-      if (company_brand || company_device || company_model || device_id || app_version) {
-        await UserService.upsertDevice(String((user as any)._id), deviceInfo);
+      if (deviceInfo.companyBrand || deviceInfo.companyDevice || deviceInfo.companyModel || deviceInfo.deviceId || deviceInfo.appVersion) {
+        try {
+          await UserService.upsertDevice(String((user as any)._id), deviceInfo);
+        } catch (err: any) {
+          console.error("Device upsert failed on sendOtp:", err);
+        }
       }
 
       // Send OTP via SMS
@@ -452,7 +470,8 @@ export const UserController = {
         return errorResponse(res, 400, validation.error.issues[0].message);
       }
 
-      const { phone, countryCode } = validation.data;
+      const { phone, countryCode, device_id, company_brand, company_device, company_model, app_version } = validation.data;
+      const anyReq: any = req;
 
       // Check if user exists
       const user = await UserService.findByPhone(phone, countryCode);
@@ -460,17 +479,67 @@ export const UserController = {
         return errorResponse(res, 404, "User not found. Please signup first.");
       }
 
+      // Determine device id from validated data or request body/header
+      const deviceId = device_id || anyReq.body.device_id || anyReq.body.deviceId || req.header("x-device-id");
+      const existingDevice = (user as any)?.userDevices?.find((d: any) => String(d.deviceId) === String(deviceId));
+
+      // If device limit reached and this is not a known device, block resend
+      const deviceCount = (user as any)?.userDevices?.length || 0;
+      if (deviceCount >= 3 && !existingDevice) {
+        return errorResponse(res, 403, "Device limit reached. Please register a new device.");
+      }
+      if (existingDevice && existingDevice.isActive === false) {
+        return errorResponse(res, 403, "This device is inactive. Please register an active device.");
+      }
+
+      // fetch existing OTP doc to reuse deviceMeta if present
+      const { default: OtpModel } = await import("../models/otp.model");
+      const otpDoc = await OtpModel.findOne({ phone, countryCode }).lean();
+      // prefer OTP doc's deviceMeta, then registered device info, then request body
+      const deviceMeta = (otpDoc && otpDoc.deviceMeta) || (existingDevice ? {
+        deviceId: existingDevice.deviceId,
+        type: existingDevice.type,
+        platform: existingDevice.platform,
+        name: existingDevice.name,
+        companyBrand: existingDevice.companyBrand,
+        companyDevice: existingDevice.companyDevice,
+        companyModel: existingDevice.companyModel,
+        appVersion: existingDevice.appVersion,
+        userAgent: existingDevice.userAgent,
+        ip: existingDevice.ip || req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
+      } : {
+        deviceId: anyReq.body.device_id || "",
+        type: "mobile",
+        platform: anyReq.body.company_brand || "",
+        name: anyReq.body.company_model || "",
+        companyBrand: anyReq.body.company_brand || "",
+        companyDevice: anyReq.body.company_device || "",
+        companyModel: anyReq.body.company_model || "",
+        appVersion: anyReq.body.app_version || "",
+        userAgent: `${anyReq.body.company_brand || ""} ${anyReq.body.company_model || ""} v${anyReq.body.app_version || ""}`.trim(),
+        ip: req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
+      });
       // Generate new OTP
       const otp = UserService.generateOtp();
 
-      // Save OTP to database with rate-limit checks
+      // Save OTP to database with rate-limit checks, include deviceMeta so OTP stores it
       try {
-        await UserService.saveLoginOtp(phone, countryCode, otp);
+        await UserService.saveLoginOtp(phone, countryCode, otp, { deviceInfo: deviceMeta });
       } catch (e: any) {
         if (e.name === "RateLimitError") {
           return errorResponse(res, 429, e.message, { retryAfter: e.retryAfter });
         }
         return errorResponse(res, 500, "Failed to save OTP", { error: e.message });
+      }
+
+      // Update device info if provided (parity with sendOtp)
+      const dm: any = deviceMeta;
+      if (dm.companyBrand || dm.companyDevice || dm.companyModel || dm.deviceId || dm.appVersion) {
+        try {
+          await UserService.upsertDevice(String((user as any)._id), dm);
+        } catch (err: any) {
+          console.error("Device upsert failed on resendOtp:", err);
+        }
       }
 
       // Send OTP via SMS
@@ -535,6 +604,41 @@ export const UserController = {
           name: updatedUser.name,
         },
       });
+    } catch (err: any) {
+      return errorResponse(res, 500, "Internal Server Error", { error: err.message });
+    }
+  },
+
+  async logout(req: Request & { user?: any }, res: Response) {
+    try {
+      const userId = req.user.id;
+      const { deviceId } = req.body;
+
+      if (!deviceId) {
+        return errorResponse(res, 400, "Device ID is required");
+      }
+
+      // Remove device from userDevice table
+      await UserService.logout(userId, deviceId);
+
+      return successResponse(res, { message: "Logged out successfully" });
+    } catch (err: any) {
+      return errorResponse(res, 500, "Internal Server Error", { error: err.message });
+    }
+  },
+
+  async deleteProfile(req: Request & { user?: any }, res: Response) {
+    try {
+      const userId = req.user.id;
+
+      // Soft delete user profile
+      const deletedUser = await UserService.deleteProfile(userId);
+
+      if (!deletedUser) {
+        return errorResponse(res, 404, "User not found");
+      }
+
+      return successResponse(res, { message: "Profile deleted successfully" });
     } catch (err: any) {
       return errorResponse(res, 500, "Internal Server Error", { error: err.message });
     }

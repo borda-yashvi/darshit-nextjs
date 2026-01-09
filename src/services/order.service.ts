@@ -8,12 +8,17 @@ export const OrderService = {
         return created.toObject();
     },
 
-    async getOrdersByUser(userId: string, search?: string, page?: number, limit?: number, partyId?: string) {
+    async getOrdersByUser(userId: string, search?: string, page?: number, limit?: number, partyId?: string, orderIds?: string[]) {
         const baseQuery: any = { user: userId };
 
         // Filter by party if provided
         if (partyId) {
             baseQuery.party = partyId;
+        }
+
+        // Filter by explicit list of order ids when provided
+        if (orderIds && Array.isArray(orderIds) && orderIds.length) {
+            baseQuery._id = { $in: orderIds.map((id) => new mongoose.Types.ObjectId(id)) };
         }
 
         if (search && typeof search === "string" && search.trim().length) {
@@ -34,6 +39,7 @@ export const OrderService = {
         const orders = await q.lean();
         return { orders, total };
     },
+
 
     async getOrderWithRows(orderId: string) {
         const order = await OrderModel.findById(orderId).lean();
@@ -108,5 +114,62 @@ export const OrderService = {
     ,
     async deleteOrder(orderId: string) {
         return OrderModel.findByIdAndDelete(orderId).lean();
+    },
+
+    async reorderRowsByIds(userId: string, partyId: string, ids?: string[]) {
+        // Expect ids to be an array of order IDs to duplicate into the provided party
+        if (!Array.isArray(ids) || !ids.length) throw new Error("orderIds array required in request body");
+
+        // Fetch the specified orders for this user
+        const resp = await (this as any).getOrdersByUser(userId, undefined, undefined, undefined, partyId, ids as string[]);
+        const orders = resp && resp.orders ? resp.orders : [];
+        if (!orders.length) throw new Error("No orders found for provided ids");
+
+        const results: any[] = [];
+        for (const ord of orders) {
+            // if ord.user mismatch, skip
+            if (String(ord.user) !== String(userId)) continue;
+
+            // ensure rows available (populated via getOrdersByUser) otherwise fetch
+            const existingRows = (ord.orderTables && ord.orderTables.length) ? ord.orderTables : ((await (this as any).getOrderWithRows(String(ord._id)))?.rows || []);
+
+            // build new order with party set to partyId and date set now
+            const newOrderPayload: any = {
+                user: ord.user,
+                orderNo: ord.orderNo,
+                date: new Date().toISOString(),
+                machineNo: ord.machineNo,
+                saller: ord.saller,
+                designNo: ord.designNo,
+                pick: ord.pick,
+                qty: ord.qty,
+                totalMtrRepit: ord.totalMtrRepit,
+                totalColor: ord.totalColor,
+                imageUrl: ord.imageUrl,
+                imagePublicId: ord.imagePublicId,
+                party: partyId
+            };
+
+            const newOrder = await (this as any).createOrder(newOrderPayload);
+
+            const payloads = (existingRows || []).map((r: any, idx: number) => ({
+                order: (newOrder as any)._id,
+                orderIndex: idx,
+                f1: r.f1,
+                f2: r.f2,
+                f3: r.f3,
+                f4: r.f4,
+                f5: r.f5,
+                f6: r.f6,
+                qty: r.qty !== undefined ? String(r.qty) : undefined,
+                repit: r.repit !== undefined ? r.repit : undefined,
+                total: r.total !== undefined ? r.total : undefined
+            }));
+
+            const createdRows = payloads.length ? await OrderTableModel.insertMany(payloads as any[]) : [];
+            results.push({ originalOrderId: String(ord._id), order: newOrder, rows: createdRows.map((c: any) => c.toObject ? c.toObject() : c) });
+        }
+
+        return { duplicated: results };
     }
 };

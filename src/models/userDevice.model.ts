@@ -14,6 +14,7 @@ const userDeviceSchema = new Schema(
         appVersion: { type: String },
         ip: { type: String },
         name: { type: String },
+        isActive: { type: Boolean, default: true },
         lastSeen: { type: Date, default: Date.now },
         createdAt: { type: Date, default: Date.now }
     },

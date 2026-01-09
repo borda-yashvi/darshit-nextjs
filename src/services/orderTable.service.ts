@@ -1,4 +1,5 @@
 import OrderTableModel from "../models/orderTable.model";
+import OrderModel from "../models/order.model";
 
 export const OrderTableService = {
     async createRow(payload: any) {
@@ -45,17 +46,7 @@ export async function deleteRowsByOrder(orderId: string) {
     return OrderTableModel.deleteMany({ order: orderId });
 }
 
-export async function reorderRowsByIds(orderId: string, ids: string[]) {
-    if (!Array.isArray(ids)) throw new Error("ids must be an array");
-    const ops = ids.map((id, idx) => ({
-        updateOne: {
-            filter: { _id: id, order: orderId },
-            update: { $set: { orderIndex: idx } }
-        }
-    }));
-    if (ops.length === 0) return { ok: 1 };
-    return OrderTableModel.bulkWrite(ops as any);
-}
+/* removed; use OrderService.reorderRowsByIds instead */
 
 export async function bulkUpdateRows(items: any[]) {
     if (!Array.isArray(items) || items.length === 0) return [];

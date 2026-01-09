@@ -9,7 +9,7 @@ const orderSchema = new Schema(
         saller: { type: String },
         designNo: { type: String },
         pick: { type: String },
-        qty: { type: Number },
+        qty: { type: String },
         totalMtrRepit: { type: Number },
         totalColor: { type: Number },
         imageUrl: { type: String },

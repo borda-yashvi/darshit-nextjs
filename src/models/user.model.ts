@@ -44,7 +44,8 @@ const userSchema = new Schema(
         // OTP send rate-limiting fields
         loginOtpSentAt: { type: Date },
         loginOtpSendCount: { type: Number, default: 0 },
-        loginOtpWindowStart: { type: Date }
+        loginOtpWindowStart: { type: Date },
+        deleted_at: { type: Date, default: null, index: true }
     },
     { timestamps: true }
 );
