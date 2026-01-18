@@ -1,7 +1,7 @@
 import app from "./app";
 import { env } from "./config/env";
 import { connectDB } from "./config/mongodb";
-
+// import './config/firebase';
 const PORT = process.env.PORT || 5000;
 
 const start = async () => {

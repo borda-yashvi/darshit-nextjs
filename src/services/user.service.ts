@@ -1,6 +1,8 @@
 import UserModel from "../models/user.model";
 import OtpModel from "../models/otp.model";
 import UserDeviceModel from "../models/userDevice.model";
+import GoogleTokenModel from "../models/googleToken.model";
+import GoogleAccountModel from "../models/googleAccount.model";
 import { Types } from "mongoose";
 import { User } from "../types/user.type";
 import axios from "axios";
@@ -8,6 +10,7 @@ import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { env } from "../config/env";
+import admin from 'firebase-admin';
 
 export const UserService = {
   async createUser(user: User) {
@@ -342,29 +345,93 @@ export const UserService = {
     //   throw new Error('Invalid Google token audience');
     // }
     // Use google-auth-library for robust verification
-    const client = new OAuth2Client(env.googleClientId || undefined);
-    const ticket: any = await client.verifyIdToken({ idToken, audience: env.googleClientId || undefined });
-    const data: any = ticket.getPayload() || {};
-    return {
+    // console.log('Verifying Google ID Token with client ID:', env.googleClientId);
+    // const client = new OAuth2Client(env.googleClientId || undefined);
+    // const ticket: any = await client.verifyIdToken({ idToken, audience: env.googleClientId || undefined });
+    // const data: any = ticket.getPayload() || {};
+    const client = new OAuth2Client(env.googleClientId);
+    console.log('Verifying Google ID Token with client ID:', idToken, 'yashvi -- ', env.googleClientId);
+
+    const ticket = await client.verifyIdToken({
+      idToken: idToken,
+      audience: env.googleClientId,
+    });
+    const data = ticket.getPayload();
+
+    // const data = await admin.auth().verifyIdToken(idToken);
+    console.log(data, 'data--')
+
+    // Save token verification data
+    const tokenData = {
       email: data.email,
-      emailVerified: data.email_verified === 'true' || data.email_verified === true,
       name: data.name,
       picture: data.picture,
       sub: data.sub,
+      data
     };
+
+    try {
+      await GoogleTokenModel.create(tokenData);
+    } catch (err: any) {
+      if (err.code === 11000) {
+        console.log('Google token already exists, skipping insert');
+      } else {
+        console.error('Failed to save Google token data:', err);
+      }
+    }
+
+    return tokenData;
   },
 
-  async loginWithGoogle(idToken: string) {
-    const payload = await (this as any).verifyGoogleIdToken(idToken);
-    if (!payload.email) throw new Error('Google token did not contain email');
-    const user = await (this as any).upsertSocialUser({
-      email: payload.email,
-      fullName: payload.name,
-      image: payload.picture,
-      provider: 'google',
-      providerId: payload.sub,
-    });
-    return user;
+  async loginWithGoogle(idToken: string, options?: { ipAddress?: string; userAgent?: string }) {
+    try {
+      const payload = await (this as any).verifyGoogleIdToken(idToken);
+      if (!payload.email) throw new Error('Google token did not contain email');
+
+      const user = await (this as any).upsertSocialUser({
+        email: payload.email,
+        fullName: payload.name,
+        image: payload.picture,
+        provider: 'google',
+        providerId: payload.sub,
+      });
+
+      // Log Google account login
+      try {
+        await GoogleAccountModel.create({
+          userId: user._id,
+          email: payload.email,
+          name: payload.name,
+          picture: payload.picture,
+          sub: payload.sub,
+          action: user.googleId ? 'login' : 'signup',
+          ipAddress: options?.ipAddress,
+          userAgent: options?.userAgent,
+          status: 'success',
+          metadata: payload.data,
+        });
+      } catch (logErr) {
+        console.error('Failed to log Google account:', logErr);
+      }
+
+      return user;
+    } catch (err: any) {
+      // Log failed attempt
+      try {
+        await GoogleAccountModel.create({
+          email: err.email || 'unknown',
+          sub: err.sub || 'unknown',
+          action: 'login',
+          ipAddress: options?.ipAddress,
+          userAgent: options?.userAgent,
+          status: 'failed',
+          errorMessage: err.message,
+        });
+      } catch (logErr) {
+        console.error('Failed to log Google account error:', logErr);
+      }
+      throw err;
+    }
   },
 
   // Apple: fetch jwks and verify token using crypto.createPublicKey with JWK
