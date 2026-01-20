@@ -10,7 +10,7 @@ export const env = {
   emailPass: process.env.EMAIL_PASS || "",
   emailFrom: process.env.EMAIL_FROM || "noreply@example.com",
   // Google & Apple OAuth
-  googleClientId: "35898743534-jasaalt0idiqngtj4qq58jtb62hoana2.apps.googleusercontent.com",
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
   appleClientId: process.env.APPLE_CLIENT_ID || "",
   appleAudience: process.env.APPLE_AUDIENCE || "",
   // SMS Configuration
