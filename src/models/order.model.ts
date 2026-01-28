@@ -10,7 +10,7 @@ const orderSchema = new Schema(
         designNo: { type: String },
         pick: { type: String },
         qty: { type: String },
-        totalMtrRepit: { type: Number },
+        totalMtrRepit: { type: String },
         totalColor: { type: Number },
         imageUrl: { type: String },
         imagePublicId: { type: String },

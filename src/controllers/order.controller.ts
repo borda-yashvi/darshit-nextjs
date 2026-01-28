@@ -45,7 +45,7 @@ export const OrderController = {
                 designNo,
                 pick,
                 qty,
-                totalMtrRepit: totalMtrRepit ? Number(totalMtrRepit) : undefined,
+                totalMtrRepit: totalMtrRepit ? totalMtrRepit : undefined,
                 totalColor: totalColor ? Number(totalColor) : undefined,
                 imageUrl,
                 imagePublicId,
@@ -142,7 +142,7 @@ export const OrderController = {
                 payload.imagePublicId = uploaded.public_id;
             }
             // convert numeric fields if present
-            if (payload.totalMtrRepit) payload.totalMtrRepit = Number(payload.totalMtrRepit);
+            if (payload.totalMtrRepit) payload.totalMtrRepit = payload.totalMtrRepit;
             if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
             const updated = await OrderService.updateOrder(orderId, payload);
             if (!updated) return errorResponse(res, 404, "Order not found");
@@ -171,7 +171,7 @@ export const OrderController = {
             let rowsRaw: any = payload.rows;
 
             // convert numeric fields if present
-            if (payload.totalMtrRepit) payload.totalMtrRepit = Number(payload.totalMtrRepit);
+            if (payload.totalMtrRepit) payload.totalMtrRepit = payload.totalMtrRepit;
             if (payload.totalColor) payload.totalColor = Number(payload.totalColor);
 
             const updatedOrder = await OrderService.updateOrder(orderId, payload);
@@ -390,7 +390,7 @@ export const OrderController = {
                 saler: order.saller || '',
                 designNo: order.designNo || '',
                 pick: order.pick || '',
-                quality:  order.qty, // Add quality field to order model if needed
+                quality: order.qty, // Add quality field to order model if needed
                 totalMeter: order.totalMtrRepit ? String(order.totalMtrRepit) : '',
                 totalColor: order.totalColor ? String(order.totalColor) : '',
                 totalSarees: totalSarees,
