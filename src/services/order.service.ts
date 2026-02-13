@@ -2,6 +2,23 @@ import OrderModel from "../models/order.model";
 import OrderTableModel from "../models/orderTable.model";
 import mongoose from "mongoose";
 
+// generate unique 6-digit order number (timestamp-backed with collision checks)
+async function generateUniqueOrderNo(): Promise<number> {
+    // try timestamp-derived values first
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const candidate = Number(String(Date.now()).slice(-6));
+        const exists = await OrderModel.exists({ orderNo: candidate });
+        if (!exists) return candidate;
+        await new Promise((r) => setTimeout(r, 1));
+    }
+    // fallback to random 6-digit until unique
+    while (true) {
+        const candidate = Math.floor(Math.random() * 1_000_000);
+        const exists = await OrderModel.exists({ orderNo: candidate });
+        if (!exists) return candidate;
+    }
+}
+
 export const OrderService = {
     async createOrder(payload: any) {
         const created = await OrderModel.create(payload);
@@ -22,9 +39,10 @@ export const OrderService = {
         }
 
         if (search && typeof search === "string" && search.trim().length) {
+            const searchNum = Number(search.trim());
             const re = new RegExp(search.trim(), "i");
             baseQuery.$or = [
-                { orderNo: re },
+                { orderNo: !isNaN(searchNum) ? searchNum : undefined },
                 { designNo: re },
                 { saller: re }
             ];
@@ -136,15 +154,16 @@ export const OrderService = {
             // build new order with party set to partyId and date set now
             const newOrderPayload: any = {
                 user: ord.user,
-                orderNo: ord.orderNo,
+                // generate a new unique 6-digit order number for duplicates
+                orderNo: await generateUniqueOrderNo(),
                 date: new Date().toISOString(),
                 machineNo: ord.machineNo,
                 saller: ord.saller,
                 designNo: ord.designNo,
-                pick: ord.pick,
-                qty: ord.qty,
-                totalMtrRepit: ord.totalMtrRepit,
-                totalColor: ord.totalColor,
+                pick: ord.pick ? Number(ord.pick) : undefined,
+                qty: ord.qty ? String(ord.qty) : undefined,
+                totalMtrRepit: ord.totalMtrRepit ? Number(ord.totalMtrRepit) : undefined,
+                totalColor: ord.totalColor ? Number(ord.totalColor) : undefined,
                 imageUrl: ord.imageUrl,
                 imagePublicId: ord.imagePublicId,
                 party: partyId

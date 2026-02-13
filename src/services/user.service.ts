@@ -159,7 +159,7 @@ export const UserService = {
 
   // Mobile OTP Authentication Methods
   async findByPhone(phone: string, countryCode: string) {
-    const found = await UserModel.findOne({ phone, countryCode, isActive: true, deleted_at: null }).populate('userDevices').lean();
+    const found = await UserModel.findOne({ phone, countryCode, deleted_at: null }).populate('userDevices').lean();
     return found || null;
   },
 

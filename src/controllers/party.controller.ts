@@ -56,7 +56,7 @@ export const PartyController = {
 
     async get(req: Request & { user?: any }, res: Response) {
         try {
-            const partyId = req.params.id;
+            const partyId = req.params.id as string;
             const party = await PartyService.getPartyById(partyId);
 
             if (!party) {
@@ -71,7 +71,7 @@ export const PartyController = {
 
     async update(req: Request & { user?: any }, res: Response) {
         try {
-            const partyId = req.params.id;
+            const partyId = req.params.id as string;
             const { partyName, mobile, gstNo, address } = req.body;
 
             const payload: any = {};
@@ -94,7 +94,7 @@ export const PartyController = {
 
     async delete(req: Request & { user?: any }, res: Response) {
         try {
-            const partyId = req.params.id;
+            const partyId = req.params.id as string;
             const deleted = await PartyService.deleteParty(partyId);
 
             if (!deleted) {

@@ -402,7 +402,7 @@ export async function generateSareePdf(data) {
 <div class="page">
 
   <!-- HEADER -->
-  <div class="title">|| BAPA SITARAM INDUSTRIES ||</div>
+  <div class="title">|| ${data.partyName} ||</div>
 
   <!-- TOP SECTION -->
   <table>

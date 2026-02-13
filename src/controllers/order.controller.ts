@@ -38,14 +38,14 @@ export const OrderController = {
 
             const order = await OrderService.createOrder({
                 user: userId,
-                orderNo,
+                orderNo: orderNo ? Number(orderNo) : undefined,
                 date: new Date(date),
                 machineNo,
                 saller,
                 designNo,
-                pick,
-                qty,
-                totalMtrRepit: totalMtrRepit ? totalMtrRepit : undefined,
+                pick: pick ? Number(pick) : undefined,
+                qty: qty ? String(qty) : undefined,
+                totalMtrRepit: totalMtrRepit ? Number(totalMtrRepit) : undefined,
                 totalColor: totalColor ? Number(totalColor) : undefined,
                 imageUrl,
                 imagePublicId,
@@ -108,7 +108,7 @@ export const OrderController = {
 
     async get(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.id;
+            const orderId = req.params.id as string;
             const anyReq: any = req;
             const page = anyReq.query && anyReq.query.page ? Number(anyReq.query.page) : undefined;
             const limit = anyReq.query && anyReq.query.limit ? Number(anyReq.query.limit) : undefined;
@@ -131,7 +131,7 @@ export const OrderController = {
 
     async update(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.id;
+            const orderId = req.params.id as string;
             const anyReq: any = req;
             const payload: any = { ...anyReq.body };
             const file = anyReq.file;
@@ -155,7 +155,7 @@ export const OrderController = {
     // update order and optionally create/update rows in a single request
     async updateWithRows(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.id;
+            const orderId = req.params.id as string;
             const anyReq: any = req;
             const file = anyReq.file;
             const payload: any = { ...anyReq.body };
@@ -254,7 +254,7 @@ export const OrderController = {
     // order-table row handlers
     async addRow(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.id;
+            const orderId = req.params.id as string;
             const anyReq: any = req;
             const body: any = anyReq.body;
             // if client sends an array of rows create many
@@ -281,7 +281,7 @@ export const OrderController = {
     // - If no body array is provided -> duplicate the entire order (create a new order + copy all its rows)
     async reorderRows(req: Request & { user?: any }, res: Response) {
         try {
-            const partyId = req.params.id;
+            const partyId = req.params.id as string;
             const anyReq: any = req;
             const body = anyReq.body;
 
@@ -299,7 +299,7 @@ export const OrderController = {
 
     async updateRow(req: Request & { user?: any }, res: Response) {
         try {
-            const rowId = req.params.rowId;
+            const rowId = req.params.rowId as string;
             const updated = await OrderTableService.updateRow(rowId, req.body);
             if (!updated) return errorResponse(res, 404, "Row not found");
             return successResponse(res, { row: updated });
@@ -310,7 +310,7 @@ export const OrderController = {
 
     async deleteRow(req: Request & { user?: any }, res: Response) {
         try {
-            const rowId = req.params.rowId;
+            const rowId = req.params.rowId as string;
             const deleted = await OrderTableService.deleteRow(rowId);
             if (!deleted) return errorResponse(res, 404, "Row not found");
             return successResponse(res, { deleted });
@@ -321,7 +321,7 @@ export const OrderController = {
 
     async delete(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.id;
+            const orderId = req.params.id as string;
             // remove all order-table rows first
             await deleteRowsByOrder(orderId);
             const deleted = await OrderService.deleteOrder(orderId);
@@ -342,7 +342,7 @@ export const OrderController = {
 
     async getSareePdf(req: Request & { user?: any }, res: Response) {
         try {
-            const orderId = req.params.orderId;
+            const orderId = req.params.orderId as string;
 
             // Fetch order with rows
             const orderData = await OrderService.getOrderWithRows(orderId);
